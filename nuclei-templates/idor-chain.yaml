@@ -1,0 +1,43 @@
+id: bug-bounty-idor-chain
+info:
+  name: IDOR to Account Takeover Chain
+  author: claude-bug-bounty
+  severity: high
+  description: Tests for IDOR patterns that commonly lead to ATO chains
+  tags: idor,auth-bypass,bug-bounty
+
+http:
+  - raw:
+      # Test 1: Access another user's profile by changing ID
+      - |
+        GET /api/v1/users/{{other_user_id}} HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{auth_token}}
+        Accept: application/json
+      # Test 2: Access another user's orders
+      - |
+        GET /api/v1/users/{{other_user_id}}/orders HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{auth_token}}
+        Accept: application/json
+      # Test 3: Access another user's settings
+      - |
+        GET /api/v1/users/{{other_user_id}}/settings HTTP/1.1
+        Host: {{Hostname}}
+        Authorization: Bearer {{auth_token}}
+        Accept: application/json
+
+    matchers-condition: or
+    matchers:
+      - type: word
+        words:
+          - '"email"'
+          - '"phone"'
+          - '"address"'
+          - '"password"'
+          - '"ssn"'
+        condition: or
+
+      - type: status
+        status:
+          - 200

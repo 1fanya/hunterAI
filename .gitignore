@@ -26,6 +26,10 @@ venv/
 *.log
 *.txt.bak
 
+# Hunt state and targets
+hunt-memory/sessions/
+targets/
+
 # Tool output
 *.out
 nmap-output/

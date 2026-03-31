@@ -1,0 +1,44 @@
+id: bug-bounty-auth-bypass
+info:
+  name: Authentication Bypass Patterns
+  author: claude-bug-bounty
+  severity: critical
+  description: Tests common authentication bypass techniques
+  tags: auth-bypass,bug-bounty
+
+http:
+  # Test 1: No auth header
+  - raw:
+      - |
+        GET {{Path}} HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+    matchers:
+      - type: status
+        status:
+          - 200
+          - 201
+
+  # Test 2: Method override
+  - raw:
+      - |
+        GET {{Path}} HTTP/1.1
+        Host: {{Hostname}}
+        X-HTTP-Method-Override: GET
+        Accept: application/json
+    matchers:
+      - type: status
+        status:
+          - 200
+
+  # Test 3: API version rollback
+  - raw:
+      - |
+        GET {{Path}} HTTP/1.1
+        Host: {{Hostname}}
+        Accept: application/json
+        X-API-Version: 1
+    matchers:
+      - type: status
+        status:
+          - 200

@@ -1,18 +1,10 @@
 ---
-description: Resume a previous hunt on a target — shows hunt history, untested endpoints, and memory-informed suggestions. Usage: /resume target.com
+description: "Resume a previous hunt — loads saved state, shows progress, and continues from where you left off. Session-persistent across Claude Code restarts. Usage: /resume target.com"
 ---
 
-# /resume
+# /resume — Resume Previous Hunt
 
-Pick up where you left off on a target.
-
-## What This Does
-
-1. Reads the target profile from `hunt-memory/targets/<target>.json`
-2. Shows hunt history (sessions, findings, payouts)
-3. Lists untested endpoints from last recon
-4. Suggests techniques based on tech stack + pattern DB
-5. Asks: resume hunting or re-run recon?
+Pick up exactly where you left off. Session state is saved automatically.
 
 ## Usage
 
@@ -20,37 +12,79 @@ Pick up where you left off on a target.
 /resume target.com
 ```
 
-## Output
+## What This Does
+
+1. Loads saved hunt state from `hunt-memory/sessions/<target>_state.json`
+2. Shows complete progress summary:
+   - Current phase (recon/ranking/hunting/validating/reporting)
+   - Endpoints tested vs remaining
+   - Findings (validated, killed, partial signals)
+   - Chain candidates to investigate
+   - Model usage (Haiku/Sonnet/Opus calls)
+3. Shows recent activity log (last 10 actions)
+4. Recommends next action
+5. Continues the hunt from the exact point it stopped
+
+## How It Works
+
+Every `/fullhunt`, `/hunt`, and `/autopilot` session automatically saves state:
+- Phase progress
+- Scope configuration
+- Recon results summary
+- Attack surface ranking (P1/P2/Kill)
+- Every tested endpoint + result
+- Every untested endpoint remaining
+- All findings (with PoC data)
+- Validation results
+- Chain candidates
+- Generated reports
+- Model usage tracking
+
+When you close Claude Code and reopen:
+```
+/resume target.com
+```
+
+Claude reads the state file and continues from the exact step.
+
+## Output Example
 
 ```
-RESUME: target.com
-═══════════════════════════════════════
+╔══════════════════════════════════════════════════╗
+║  HUNT STATE: target.com                          ║
+╚══════════════════════════════════════════════════╝
 
-Hunt History:
-  Sessions:    3
-  Last hunt:   2026-03-24
-  Total time:  2h 00m
-  Findings:    1 confirmed (IDOR, $1500 paid)
+  Phase:     hunting
+  Started:   2026-03-30T12:00:00
+  Updated:   2026-03-30T14:30:00
+  Cost mode: balanced
 
-Untested Surface:
-  3 endpoints from last recon:
-  1. /api/v2/users/{id}/export
-  2. /api/v2/users/{id}/share
-  3. /api/v2/users/{id}/history
+  Recon: ✓ 142 subs, 38 live, 1250 URLs, 3 nuclei findings
+  Ranking: ✓ 12 P1, 24 P2, 6 killed
+  Endpoints: 8 tested, 28 remaining
+  Findings: 2 total, 1 validated, 0 killed
+  Partial signals: 3
+  Chain candidates: 1 untested
 
-Memory Suggestions:
-  Tech stack [Next.js, GraphQL, PostgreSQL] matches 2 targets
-  where you found auth bypass. Try introspection → mutation pattern.
+  Model calls: Haiku=15, Sonnet=42, Opus=1
 
-Actions:
-  [r] Resume hunting untested endpoints
-  [n] Re-run recon first (surface may have changed)
-  [s] Show full hunt journal for this target
+  Recent activity:
+    [14:28:32] Tested: /api/v2/orders/{id} [idor] → finding
+    [14:29:15] Finding: FIND-002 — idor on /api/v2/orders/{id}
+    [14:30:00] Phase: hunting → hunting (continuing)
+
+  ► Next: Continue hunting — next: /api/v2/users/{id}/export
+```
+
+## Under the Hood
+
+```bash
+python3 tools/hunt_state.py target.com --show
 ```
 
 ## If No Previous Hunt
 
 ```
-No previous hunt data for target.com.
-Run /recon target.com first, then /hunt target.com.
+No previous state found for target.com
+Start a new hunt with: /fullhunt target.com
 ```

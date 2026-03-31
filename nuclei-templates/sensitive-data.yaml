@@ -1,0 +1,54 @@
+id: bug-bounty-sensitive-data
+info:
+  name: Sensitive Data Exposure
+  author: claude-bug-bounty
+  severity: high
+  description: Detects exposed environment files, configs, and debug endpoints
+  tags: sensitive-data,exposure,bug-bounty
+
+http:
+  - method: GET
+    path:
+      - "{{BaseURL}}/.env"
+      - "{{BaseURL}}/.env.local"
+      - "{{BaseURL}}/.env.production"
+      - "{{BaseURL}}/.env.backup"
+      - "{{BaseURL}}/config.json"
+      - "{{BaseURL}}/.git/config"
+      - "{{BaseURL}}/.git/HEAD"
+      - "{{BaseURL}}/actuator/env"
+      - "{{BaseURL}}/actuator/heapdump"
+      - "{{BaseURL}}/debug/vars"
+      - "{{BaseURL}}/__debug__/"
+      - "{{BaseURL}}/telescope"
+      - "{{BaseURL}}/phpinfo.php"
+      - "{{BaseURL}}/server-status"
+      - "{{BaseURL}}/elmah.axd"
+      - "{{BaseURL}}/trace.axd"
+      - "{{BaseURL}}/backup.sql"
+      - "{{BaseURL}}/database.sql"
+      - "{{BaseURL}}/storage/logs/laravel.log"
+
+    stop-at-first-match: false
+
+    matchers-condition: and
+    matchers:
+      - type: status
+        status:
+          - 200
+
+      - type: word
+        words:
+          - "DB_PASSWORD"
+          - "API_KEY"
+          - "SECRET_KEY"
+          - "AWS_ACCESS"
+          - "[core]"
+          - "ref: refs"
+          - "CREATE TABLE"
+          - "INSERT INTO"
+          - "<title>phpinfo()"
+          - "actuator"
+          - "heapdump"
+          - "DEBUG"
+        condition: or
