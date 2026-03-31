@@ -65,10 +65,15 @@ python3 tools/h1_collector.py --program $PROGRAM --save
 
 After collection:
 - Read `targets/$PROGRAM.json` for rules, exclusions, bounty ranges
+- **CRITICAL: Extract the program's exclusion list from the rules field.**
+  Parse every bullet/line that says "excluded", "not eligible", "ineligible", "we do not pay", etc.
+  Store as `targets/$PROGRAM_exclusions.txt` — one exclusion per line.
+  Cross-reference EVERY finding against this list before reporting.
 - Load scope into ScopeChecker (in-scope domains + out-of-scope exclusions)
 - Analyze Hacktivity for common vulnerability classes (avoid dupes)
 - Note bounty table for prioritization (focus on High/Critical payouts)
-- Show summary to user for confirmation
+- **PRIORITIZE endpoints that handle user data, authentication, payments**
+  (see rules/hunting.md section 2c for endpoint priority tiers)
 - Save to hunt state
 
 ### Phase 1: Scope Import (Model: Haiku, Effort: Low)

@@ -31,6 +31,75 @@ NOT a bug: Dead/unreachable code
 NOT a bug: SSRF with DNS callback only
 ```
 
+## 2b. PAYABILITY GATE — Will This Actually Get Paid?
+
+**BEFORE writing up ANY finding, check these:**
+
+### Step 1: Read the program's exclusion list
+Load `targets/$PROGRAM.json` → read the `rules` field. Programs list specific bug types they do NOT pay for. If your finding matches an exclusion → KILL IT.
+
+### Step 2: Auto-reject these (almost never paid anywhere)
+```
+ALWAYS REJECTED — do NOT report:
+✗ Version/banner disclosure (server headers, info.jsp, /status endpoints)
+✗ Missing security headers (CSP, X-Frame-Options, HSTS)
+✗ SSL/TLS configuration issues
+✗ Cookie without Secure/HttpOnly flag (non-session cookies)
+✗ CSRF on non-state-changing actions (login, logout, search)
+✗ X-Requested-With as CSRF protection (this IS valid CSRF defense)
+✗ Clickjacking on non-sensitive pages
+✗ Text/content injection without XSS
+✗ Self-XSS (only works on yourself)
+✗ Rate limiting missing (unless it leads to brute-force ATO)
+✗ Open redirect alone (only valuable if chained with OAuth)
+✗ Stack traces / error messages (unless they leak secrets/credentials)
+✗ Directory listing on non-sensitive directories
+✗ Generic information disclosure (tech stack, internal IPs)
+✗ Email spoofing / SPF/DKIM/DMARC issues
+✗ Autocomplete enabled
+✗ Password complexity not enforced
+✗ Session timeout too long
+✗ CORS misconfiguration without proof of data theft
+✗ Host header injection without practical exploit
+✗ Path traversal that only reads public files
+✗ Exposed API that returns only public/catalogue data
+```
+
+### Step 3: The "$500 Test"
+> "Would I bet $500 of my own money that this finding gets a bounty?"
+> If NO → don't waste 30 minutes writing a report. Keep hunting.
+
+### Step 4: Exploitation Required
+**Information disclosure alone is NOT enough.** You must demonstrate:
+- A working exploit (PoC that does something harmful)  
+- OR a chain where the info leads directly to an exploit
+- "I found version X" → rejected. "I found version X AND exploited CVE-Y to get RCE" → paid
+
+## 2c. PRIORITIZE HIGH-VALUE ENDPOINTS
+
+Not all endpoints are equal. Focus on endpoints that handle:
+```
+🔴 HIGH VALUE — hunt these FIRST:
+  - User authentication (login, register, password reset, 2FA)
+  - User data (profile, settings, PII, payment info)
+  - Authorization (admin panels, role management, permissions)
+  - Financial (payments, transfers, credits, subscriptions)
+  - File operations (upload, download, export)
+  - API keys / tokens / secrets management
+
+🟡 MEDIUM VALUE:
+  - Search / filtering (potential SQLi/XSS)
+  - Content creation (comments, posts, messages — stored XSS)
+  - Sharing / collaboration features (IDOR on shared resources)
+  - Integrations / webhooks (SSRF potential)
+
+⚪ LOW VALUE — skip unless nothing else:
+  - Static pages, marketing sites
+  - Public catalogue / product listings
+  - Status pages, health checks
+  - Documentation / help pages
+```
+
 ## 3. KILL WEAK FINDINGS FAST
 
 Run the 7-Question Gate BEFORE spending time on a finding. Kill at Q1 if needed.

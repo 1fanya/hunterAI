@@ -33,15 +33,63 @@ One NO = kill it immediately. N/A hurts your validity ratio more than missing a 
 
 A "technically possible" finding without PoC is an Informational at best.
 
-## 4. CVSS MUST MATCH ACTUAL IMPACT
+## 4. CVSS MUST MATCH ACTUAL IMPACT — NO INFLATION
 
 Don't claim Critical for a Medium bug. Triagers trust you less for every overclaim.
 Don't claim Medium for a Critical — you're leaving money on the table.
 
-Use the CVSS 3.1 formula. Common scoring:
-- IDOR read PII (auth required): 6.5 Medium
-- Auth bypass → admin: 9.8 Critical
-- SSRF → cloud metadata: 9.1 Critical
+Use the CVSS 3.1 formula. **Strict scoring rules:**
+
+```
+Confidentiality (C):
+  C:N  → Version disclosure, tech stack disclosure, public data
+  C:L  → Private user data leaked (email, name, address) 
+  C:H  → Bulk PII, credentials, payment data, admin access
+
+Integrity (I):
+  I:N  → Read-only issues, info disclosure
+  I:L  → Can modify some data (profile, settings)
+  I:H  → Can modify critical data (payments, roles, other users' data)
+
+Availability (A):
+  A:N  → Most web vulns
+  A:L  → Rate limit bypass, resource exhaustion
+  A:H  → Full DoS, data deletion
+```
+
+Common reference scores:
+- Info disclosure (version, config): **0.0 - 3.1** (Informational/Low)
+- IDOR read private PII (auth required): **6.5** (Medium)
+- Stored XSS executing in admin panel: **8.1** (High)
+- Auth bypass → admin access: **9.8** (Critical)
+- SSRF → cloud metadata with credentials: **9.1** (Critical)
+- RCE: **9.8 - 10.0** (Critical)
+
+**NEVER score info disclosure as Medium (5.0+).** If no private data is leaked, C:N → score drops below 4.0.
+
+## 4b. NEVER MISCHARACTERIZE FINDINGS
+
+**Your H1 reputation depends on technical accuracy.** Wrong claims = signal score drops = reports deprioritized.
+
+```
+WRONG: "CSRF bypass via X-Requested-With header"
+RIGHT: X-Requested-With IS valid CSRF defense (browsers don't send it cross-origin)
+       → This is NOT a bypass. Don't report it as one.
+
+WRONG: "Authentication bypass — API returns data without login"
+RIGHT: Check if the data is public (visible without login in browser).
+       If yes → no auth bypass, it's intentionally public.
+
+WRONG: "Information disclosure — version number exposed"
+       unless you ALSO have a working exploit for that version.
+       Version alone = informational ($0).
+
+WRONG: "Sensitive data exposure" for game catalogue/prices
+RIGHT: Catalogue data is public. Only report if you access
+       PRIVATE data (user profiles, emails, payment info).
+```
+
+**Rule: If you're unsure whether your characterization is accurate, describe what you observed factually instead of labeling it.**
 
 ## 5. NEVER SUBMIT FROM THE ALWAYS-REJECTED LIST
 
@@ -51,12 +99,15 @@ These are always N/A. Never submit them standalone:
 Missing headers (CSP, HSTS, X-Frame-Options)
 GraphQL introspection alone
 Self-XSS
-Open redirect alone
-SSRF DNS-only
+Open redirect alone (must chain with OAuth for value)
+SSRF DNS-only  
 Logout CSRF
 Missing cookie flags alone
 Rate limit on non-critical forms
 Banner/version disclosure without working exploit
+X-Requested-With as sole CSRF protection (this IS valid)
+Public data accessible via API (catalogue, prices, status)
+Internal comments/debug info without exploitable impact
 ```
 
 Build the chain first. Prove it works. Then report.
