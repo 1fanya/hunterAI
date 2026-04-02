@@ -31,15 +31,14 @@ NC = "\033[0m"
 TOOLS = [
     # (module_name, class_name, required_methods)
     ("scope_guard", "ScopeGuard", ["is_in_scope"]),
-    ("waf_detector", "WafDetector", ["detect"]),
-    ("response_differ", "ResponseDiffer", ["diff_responses"]),
-    ("ws_tester", "WsTester", []),
+    ("waf_detector", "WAFDetector", ["detect"]),
+    ("response_differ", "ResponseDiffer", ["compare"]),
+    ("ws_tester", "WSTester", []),
     ("param_miner", "ParamMiner", ["mine"]),
     ("session_manager", "SessionManager", []),
     ("wordlist_builder", "WordlistBuilder", []),
     ("nuclei_generator", "NucleiGenerator", []),
     ("hacktivity_learner", "HacktivityLearner", ["learn_program"]),
-    ("recon_adapter", "ReconAdapter", []),
     # Phase 2 tools
     ("race_tester", "RaceTester", ["run", "detect_race_type"]),
     ("ssrf_engine", "SSRFEngine", ["test_ssrf", "generate_bypass_urls", "detect_ssrf_params"]),
@@ -53,6 +52,25 @@ TOOLS = [
     ("graphql_deep", "GraphQLDeepTester", ["run_all", "discover_endpoint", "test_introspection"]),
     ("monitor", "AttackSurfaceMonitor", ["run_full_check", "check_subdomains"]),
     ("git_recon", "GitRecon", ["run_full_scan", "scan_file_contents"]),
+    # Intelligence layer
+    ("subdomain_takeover", "SubdomainTakeover", ["scan_domain"]),
+    ("jwt_analyzer", "JWTAnalyzer", ["analyze"]),
+    ("api_discovery", "APIDiscovery", ["discover"]),
+    ("blind_xss", "BlindXSS", ["inject"]),
+    ("twofa_bypass", "TwoFABypass", ["test_all"]),
+    ("hunt_intel", "HuntIntel", ["record_result"]),
+    # Advanced attack tools
+    ("ssti_scanner", "SSTIScanner", ["test_url"]),
+    ("host_header", "HostHeaderAttack", ["test_all"]),
+    ("oauth_tester", "OAuthTester", ["test_all"]),
+    # Final expansion
+    ("xxe_scanner", "XXEScanner", ["test_endpoint"]),
+    ("open_redirect", "OpenRedirectScanner", ["scan_url", "scan_domain"]),
+    ("file_upload", "FileUploadTester", ["test_upload"]),
+    ("path_traversal", "PathTraversalScanner", ["test_url"]),
+    ("business_logic", "BusinessLogicTester", ["test_all"]),
+    # State persistence
+    ("hunt_state", "HuntState", ["complete_tool", "is_tool_completed", "add_finding"]),
 ]
 
 # ── Dependency checks ────────────────────────────────────────────────────
@@ -115,6 +133,12 @@ def check_tools():
                     obj = cls(domain="test.com", data_dir="/tmp/test_monitor")
                 elif class_name in ("GitRecon",):
                     obj = cls(token="")
+                elif class_name in ("HostHeaderAttack", "OAuthTester"):
+                    obj = cls("https://test.com")
+                elif class_name in ("BusinessLogicTester",):
+                    obj = cls("https://test.com")
+                elif class_name in ("HuntState",):
+                    obj = cls("test.com")
                 else:
                     obj = cls()
                 instantiated = True
