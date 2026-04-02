@@ -54,11 +54,11 @@ TOOLS = [
     ("git_recon", "GitRecon", ["run_full_scan", "scan_file_contents"]),
     # Intelligence layer
     ("subdomain_takeover", "SubdomainTakeover", ["scan_domain"]),
-    ("jwt_analyzer", "JWTAnalyzer", ["analyze"]),
+    ("jwt_analyzer", "JWTAnalyzer", ["analyze_token"]),
     ("api_discovery", "APIDiscovery", ["discover"]),
-    ("blind_xss", "BlindXSS", ["inject"]),
+    ("blind_xss", "BlindXSSHunter", ["inject"]),
     ("twofa_bypass", "TwoFABypass", ["test_all"]),
-    ("hunt_intel", "HuntIntel", ["record_result"]),
+    ("hunt_intel", "HuntIntel", ["record_hunt"]),
     # Advanced attack tools
     ("ssti_scanner", "SSTIScanner", ["test_url"]),
     ("host_header", "HostHeaderAttack", ["test_all"]),
@@ -226,7 +226,7 @@ def check_agent_tools_list():
 
         import re
         tool_defs = re.findall(r'"name":\s*"(run_\w+|read_\w+|update_\w+|finish)"', content)
-        dispatch_handlers = re.findall(r'elif name == "(run_\w+|read_\w+|update_\w+|finish)"', content)
+        dispatch_handlers = re.findall(r'(?:el)?if name == "(run_\w+|read_\w+|update_\w+|finish)"', content)
 
         # Check for tools defined but not dispatched
         defined_set = set(tool_defs)
