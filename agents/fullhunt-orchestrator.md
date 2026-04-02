@@ -107,7 +107,45 @@ python3 tools/js_analyzer.py --target $TARGET --recon-dir recon/$TARGET/
 
 # Tech profiling for targeted attack selection
 python3 tools/tech_profiler.py --target $TARGET
+
+# Normalize recon output to canonical format
+python3 tools/recon_adapter.py --recon-dir recon/$TARGET/ --normalize
 ```
+
+### Phase 2.5: Pre-Hunt Intelligence (Model: Haiku, Effort: Medium)
+
+**MANDATORY before active testing. Skipping this wastes time.**
+
+```bash
+# ─── Scope enforcement: load scope into guard ───
+python3 tools/scope_guard.py --program $PROGRAM --import-h1
+python3 tools/scope_guard.py --program $PROGRAM --show
+
+# ─── Self-learning: study what worked on this program before ───
+python3 tools/hacktivity_learner.py --program $PROGRAM --count 50
+# Reads disclosed reports, extracts attack patterns, saves as skills
+
+# ─── WAF detection: adapt payloads before testing ───
+python3 tools/waf_detector.py --target https://$TARGET --test-bypass --save $TARGET
+# If WAF detected, all subsequent payloads use bypass variants
+
+# ─── Wordlist building: target-specific fuzzing data ───
+python3 tools/wordlist_builder.py --install-seclists  # one-time setup
+python3 tools/wordlist_builder.py --target $TARGET --recon-dir recon/$TARGET/
+# Generates: dirs-target.txt, params-target.txt, endpoints-js.txt, master.txt
+
+# ─── Custom nuclei templates from tech stack ───
+python3 tools/nuclei_generator.py --target $TARGET --recon-dir recon/$TARGET/
+# Then run nuclei with custom templates:
+nuclei -l recon/$TARGET/live-hosts.txt -t nuclei-templates/generated/$TARGET/ -severity medium,high,critical
+```
+
+**After this phase, you have:**
+- Strict scope enforcement (every URL checked before request)
+- Knowledge of prior vulnerabilities on this program
+- WAF-aware payloads for bypass
+- Target-specific wordlists for fuzzing
+- Custom nuclei templates for the tech stack
 
 ### Phase 3: Rank Attack Surface (Model: Haiku, Effort: Medium)
 
@@ -196,6 +234,23 @@ echo "https://target.com" | crlfuzz -silent
 
 # ─── XSS (external tool) ───
 dalfox url "https://target.com/search?q=test" --blind "$INTERACTSH_URL"
+
+# ─── NEW: Advanced IDOR Detection (highest ROI) ───
+# Set up dual sessions first:
+python3 tools/session_manager.py --target $TARGET --add attacker --type bearer --token "$ATTACKER_TOKEN"
+python3 tools/session_manager.py --target $TARGET --add victim --type bearer --token "$VICTIM_TOKEN"
+# Then run field-level response diffing on every API endpoint:
+python3 tools/response_differ.py --url "https://api.target.com/api/v1/users/me" \
+  --attacker-auth "Bearer $ATTACKER_TOKEN" --victim-auth "Bearer $VICTIM_TOKEN"
+
+# ─── NEW: WebSocket Testing (bypasses WAFs) ───
+python3 tools/ws_tester.py --target $TARGET --discover
+python3 tools/ws_tester.py --ws-url "wss://target.com/ws" --victim-id "$VICTIM_ID"
+
+# ─── NEW: Hidden Parameter Mining ───
+python3 tools/param_miner.py --url "https://api.target.com/api/v1/users" --method GET \
+  --auth "Bearer $AUTH_TOKEN"
+# Check for ?debug=1, ?admin=true, ?internal=1, ?user_id= etc.
 ```
 
 **Extended endpoint-to-tool mapping:**
@@ -214,6 +269,10 @@ dalfox url "https://target.com/search?q=test" --blind "$INTERACTSH_URL"
 | Behind reverse proxy | smuggling_tester.py | - |
 | Old/unused subdomains | subdomain_takeover.py | - |
 | Cloud-hosted target | cloud_enum.py | - |
+| Any API `/users/{id}`, `/profile` | **response_differ.py** (IDOR diff) | auth_tester.py |
+| `wss://`, `/ws`, `/socket` | **ws_tester.py** | CSWSH, IDOR |
+| Any high-value endpoint | **param_miner.py** (hidden params) | debug, admin, SSRF |
+| All endpoints (if WAF detected) | **waf_detector.py** bypass payloads | Adapt all tools |
 
 #### Step 4c: 5-Minute Rule
 

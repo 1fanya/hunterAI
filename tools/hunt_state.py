@@ -1,466 +1,247 @@
 #!/usr/bin/env python3
 """
-Hunt State Manager — Session Persistence for Bug Bounty Hunting
+hunt_state.py — Crash-proof Hunt State Manager
 
-Saves and restores complete hunt state so Claude Code can resume
-exactly where it left off after closing and reopening.
+Persists ALL hunt state to disk after every step. Survives:
+- Auto-compact (Claude Code conversation truncation)
+- Terminal crashes
+- Session restarts
 
-State is saved to hunt-memory/sessions/<target>_state.json
+Every tool call, finding, phase transition, and decision is saved.
+On resume, the hunt continues from the last saved state.
 
 Usage:
-    from hunt_state import HuntStateManager
-    
-    state = HuntStateManager("target.com")
-    state.load()  # Restore previous session
-    
-    # Update state during hunting
-    state.set_phase("hunting")
-    state.add_tested_endpoint("/api/v2/users/123")
-    state.add_finding({"type": "idor", "endpoint": "/api/v2/users/{id}", ...})
-    state.save()  # Persist to disk
-    
-    # Resume later
-    state = HuntStateManager("target.com")
-    state.load()
-    print(state.get_untested_endpoints())
-    print(state.get_phase())  # "hunting"
+    from hunt_state import HuntState
+    state = HuntState("target.com")
+    state.set_phase("recon")
+    state.add_finding({...})
+    state.save()  # called automatically after every mutation
 """
-
 import json
 import os
-import fcntl
+import time
 from datetime import datetime
-from copy import deepcopy
-
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SESSIONS_DIR = os.path.join(BASE_DIR, "hunt-memory", "sessions")
+from pathlib import Path
+from typing import Any
 
 
-class HuntStateManager:
-    """Manages persistent hunt state for session continuity."""
+class HuntState:
+    """Crash-proof hunt state manager with disk persistence."""
 
-    def __init__(self, target, sessions_dir=None):
-        self.target = target
-        self.sessions_dir = sessions_dir or SESSIONS_DIR
-        os.makedirs(self.sessions_dir, exist_ok=True)
-        self.filepath = os.path.join(self.sessions_dir, f"{self._safe_name(target)}_state.json")
-        self.state = self._empty_state()
+    def __init__(self, domain: str, base_dir: str = ""):
+        self.domain = domain
+        self.base_dir = Path(base_dir) if base_dir else Path("hunt-memory/sessions")
+        self.base_dir.mkdir(parents=True, exist_ok=True)
+        self.state_file = self.base_dir / f"{domain}_state.json"
+        self.state = self._load_or_create()
 
-    def _safe_name(self, target):
-        """Convert target to safe filename."""
-        return target.replace(".", "_").replace("/", "_").replace(":", "_").replace("*", "wildcard")
+    def _load_or_create(self) -> dict:
+        """Load existing state or create fresh."""
+        if self.state_file.exists():
+            try:
+                return json.loads(self.state_file.read_text())
+            except Exception:
+                pass
 
-    def _empty_state(self):
-        """Create empty state structure."""
         return {
-            "version": "1.0",
-            "target": self.target,
-            "created_at": datetime.now().isoformat(),
-            "updated_at": datetime.now().isoformat(),
-
-            # Pipeline progress
-            "phase": "not_started",  # not_started, scope, recon, ranking, hunting, validating, reporting, complete
-            "phase_history": [],
+            "domain": self.domain,
+            "created": datetime.now().isoformat(),
+            "last_updated": datetime.now().isoformat(),
+            "phase": "init",
+            "step": 0,
+            "total_steps": 0,
 
             # Scope
             "scope": {
-                "domains": [],
-                "excluded_domains": [],
-                "excluded_classes": [],
+                "in_scope": [],
+                "out_scope": [],
+                "program": "",
                 "platform": "",
-                "program_handle": "",
             },
 
-            # Recon results summary
+            # Recon results
             "recon": {
-                "completed": False,
-                "subdomains_count": 0,
-                "live_hosts_count": 0,
-                "urls_count": 0,
-                "nuclei_findings_count": 0,
-                "tech_stack": {},
-                "recon_dir": "",
+                "subdomains": [],
+                "live_hosts": [],
+                "tech_stack": [],
+                "urls_with_params": [],
+                "endpoints_discovered": 0,
             },
 
-            # Attack surface ranking
-            "ranking": {
-                "completed": False,
-                "p1_endpoints": [],
-                "p2_endpoints": [],
-                "kill_list": [],
-            },
-
-            # Hunting progress
-            "hunting": {
-                "current_endpoint_index": 0,
-                "current_vuln_class": "",
-                "tested_endpoints": [],
-                "untested_endpoints": [],
-                "partial_signals": [],
-                "time_spent_minutes": 0,
-            },
+            # Tool execution tracking
+            "tools_completed": [],
+            "tools_skipped": [],
+            "tools_failed": [],
+            "current_tool": "",
 
             # Findings
             "findings": [],
-            "validated_findings": [],
-            "killed_findings": [],
-            "chain_candidates": [],
+            "chains": [],
+            "pocs_generated": [],
+
+            # Endpoints tested
+            "endpoints_tested": [],
+            "endpoints_remaining": [],
 
             # Reports
-            "reports": {
-                "generated": [],
-                "submitted": [],
-            },
+            "reports_generated": [],
 
-            # Dedup
-            "dedup": {
-                "hacktivity_checked": False,
-                "similar_reports": [],
-            },
-
-            # Model usage tracking
+            # Token/model tracking
             "model_usage": {
-                "haiku_calls": 0,
-                "sonnet_calls": 0,
-                "opus_calls": 0,
-                "estimated_cost": 0.0,
+                "total_steps": 0,
+                "haiku_steps": 0,
+                "sonnet_steps": 0,
+                "opus_steps": 0,
             },
 
-            # Session log (for resume context)
-            "session_log": [],
-
-            # Cost mode used
-            "cost_mode": "balanced",
+            # Hunt intelligence feed-back
+            "hunt_intel": {
+                "effective_tools": [],
+                "wasted_tools": [],
+                "tech_correlations": {},
+            },
         }
 
-    def load(self):
-        """Load state from disk. Returns True if previous state found."""
-        if not os.path.exists(self.filepath):
-            return False
+    def save(self) -> None:
+        """Save state to disk (call after every mutation)."""
+        self.state["last_updated"] = datetime.now().isoformat()
+        self.state_file.write_text(
+            json.dumps(self.state, indent=2, default=str))
 
-        try:
-            with open(self.filepath, "r") as f:
-                fcntl.flock(f, fcntl.LOCK_SH)
-                saved = json.load(f)
-                fcntl.flock(f, fcntl.LOCK_UN)
+    # ── Phase management ─────────────────────────────────────────────────
 
-            # Merge saved state into current (preserves new fields from upgrades)
-            self._merge_state(saved)
-            return True
+    def set_phase(self, phase: str) -> None:
+        self.state["phase"] = phase
+        self.save()
 
-        except (json.JSONDecodeError, IOError, OSError) as e:
-            print(f"[!] Warning: Could not load state from {self.filepath}: {e}")
-            return False
-
-    def save(self):
-        """Save state to disk with file locking."""
-        self.state["updated_at"] = datetime.now().isoformat()
-
-        try:
-            with open(self.filepath, "w") as f:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                json.dump(self.state, f, indent=2, default=str)
-                fcntl.flock(f, fcntl.LOCK_UN)
-        except IOError as e:
-            print(f"[-] Error saving state: {e}")
-
-    def _merge_state(self, saved):
-        """Merge saved state into current state, preserving new fields."""
-        for key in saved:
-            if key in self.state:
-                if isinstance(self.state[key], dict) and isinstance(saved[key], dict):
-                    self.state[key].update(saved[key])
-                else:
-                    self.state[key] = saved[key]
-
-    # --- Phase management ---
-
-    def get_phase(self):
+    def get_phase(self) -> str:
         return self.state["phase"]
 
-    def set_phase(self, phase):
-        old_phase = self.state["phase"]
-        self.state["phase"] = phase
-        self.state["phase_history"].append({
-            "from": old_phase,
-            "to": phase,
-            "at": datetime.now().isoformat(),
+    def increment_step(self) -> int:
+        self.state["step"] += 1
+        self.state["total_steps"] += 1
+        self.save()
+        return self.state["step"]
+
+    # ── Tool tracking ────────────────────────────────────────────────────
+
+    def start_tool(self, tool_name: str) -> None:
+        self.state["current_tool"] = tool_name
+        self.save()
+
+    def complete_tool(self, tool_name: str, had_findings: bool = False,
+                      duration: float = 0) -> None:
+        self.state["tools_completed"].append({
+            "name": tool_name,
+            "timestamp": datetime.now().isoformat(),
+            "had_findings": had_findings,
+            "duration": round(duration, 1),
         })
-        self.log(f"Phase: {old_phase} → {phase}")
+        self.state["current_tool"] = ""
+
+        if had_findings:
+            self.state["hunt_intel"]["effective_tools"].append(tool_name)
+        elif duration > 30:
+            self.state["hunt_intel"]["wasted_tools"].append(tool_name)
+
         self.save()
 
-    # --- Scope ---
-
-    def set_scope(self, domains, excluded_domains=None, excluded_classes=None,
-                  platform="", program_handle=""):
-        self.state["scope"] = {
-            "domains": domains,
-            "excluded_domains": excluded_domains or [],
-            "excluded_classes": excluded_classes or [],
-            "platform": platform,
-            "program_handle": program_handle,
-        }
+    def skip_tool(self, tool_name: str, reason: str = "") -> None:
+        self.state["tools_skipped"].append({
+            "name": tool_name, "reason": reason,
+            "timestamp": datetime.now().isoformat()})
         self.save()
 
-    def get_scope(self):
-        return self.state["scope"]
-
-    # --- Recon ---
-
-    def set_recon_complete(self, subdomains=0, live_hosts=0, urls=0,
-                           nuclei_findings=0, tech_stack=None, recon_dir=""):
-        self.state["recon"] = {
-            "completed": True,
-            "subdomains_count": subdomains,
-            "live_hosts_count": live_hosts,
-            "urls_count": urls,
-            "nuclei_findings_count": nuclei_findings,
-            "tech_stack": tech_stack or {},
-            "recon_dir": recon_dir,
-        }
+    def fail_tool(self, tool_name: str, error: str = "") -> None:
+        self.state["tools_failed"].append({
+            "name": tool_name, "error": error[:200],
+            "timestamp": datetime.now().isoformat()})
         self.save()
 
-    # --- Ranking ---
+    def is_tool_completed(self, tool_name: str) -> bool:
+        return any(t["name"] == tool_name
+                   for t in self.state["tools_completed"])
 
-    def set_ranking(self, p1_endpoints, p2_endpoints=None, kill_list=None):
-        self.state["ranking"] = {
-            "completed": True,
-            "p1_endpoints": p1_endpoints,
-            "p2_endpoints": p2_endpoints or [],
-            "kill_list": kill_list or [],
-        }
-        # Initialize untested endpoints from ranking
-        all_endpoints = p1_endpoints + (p2_endpoints or [])
-        tested = set(self.state["hunting"]["tested_endpoints"])
-        self.state["hunting"]["untested_endpoints"] = [
-            ep for ep in all_endpoints if ep not in tested
-        ]
-        self.save()
+    # ── Findings ─────────────────────────────────────────────────────────
 
-    # --- Hunting ---
-
-    def add_tested_endpoint(self, endpoint, vuln_class="", result="no_finding"):
-        """Mark an endpoint as tested."""
-        entry = {
-            "endpoint": endpoint,
-            "vuln_class": vuln_class,
-            "result": result,
-            "tested_at": datetime.now().isoformat(),
-        }
-        self.state["hunting"]["tested_endpoints"].append(endpoint)
-
-        # Remove from untested
-        untested = self.state["hunting"]["untested_endpoints"]
-        if endpoint in untested:
-            untested.remove(endpoint)
-
-        self.log(f"Tested: {endpoint} [{vuln_class}] → {result}")
-        self.save()
-
-    def get_untested_endpoints(self):
-        """Get list of endpoints not yet tested."""
-        return self.state["hunting"]["untested_endpoints"]
-
-    def get_tested_endpoints(self):
-        """Get list of already-tested endpoints."""
-        return self.state["hunting"]["tested_endpoints"]
-
-    def add_partial_signal(self, endpoint, signal_type, details):
-        """Record a partial signal for later investigation."""
-        self.state["hunting"]["partial_signals"].append({
-            "endpoint": endpoint,
-            "signal_type": signal_type,
-            "details": details,
-            "found_at": datetime.now().isoformat(),
-        })
-        self.save()
-
-    # --- Findings ---
-
-    def add_finding(self, finding):
-        """Add a confirmed finding."""
-        finding["found_at"] = datetime.now().isoformat()
-        finding["id"] = f"FIND-{len(self.state['findings']) + 1:03d}"
+    def add_finding(self, finding: dict) -> None:
+        finding["timestamp"] = datetime.now().isoformat()
         self.state["findings"].append(finding)
-        self.log(f"Finding: {finding['id']} — {finding.get('type', 'unknown')} on {finding.get('endpoint', 'unknown')}")
-        self.save()
-        return finding["id"]
-
-    def validate_finding(self, finding_id, passed=True, notes=""):
-        """Mark a finding as validated or killed."""
-        for f in self.state["findings"]:
-            if f.get("id") == finding_id:
-                f["validated"] = passed
-                f["validation_notes"] = notes
-                f["validated_at"] = datetime.now().isoformat()
-
-                if passed:
-                    self.state["validated_findings"].append(finding_id)
-                    self.log(f"Validated: {finding_id}")
-                else:
-                    self.state["killed_findings"].append(finding_id)
-                    self.log(f"Killed: {finding_id} — {notes}")
-                break
         self.save()
 
-    def add_chain_candidate(self, finding_id, chain_type, potential_b):
-        """Record a chain candidate (A→B potential)."""
-        self.state["chain_candidates"].append({
-            "finding_a": finding_id,
-            "chain_type": chain_type,
-            "potential_b": potential_b,
-            "status": "untested",
-            "added_at": datetime.now().isoformat(),
-        })
+    def add_chain(self, chain: dict) -> None:
+        self.state["chains"].append(chain)
         self.save()
 
-    def get_findings(self, validated_only=False):
-        if validated_only:
-            return [f for f in self.state["findings"]
-                    if f.get("id") in self.state["validated_findings"]]
-        return self.state["findings"]
+    # ── Scope ────────────────────────────────────────────────────────────
 
-    # --- Reports ---
-
-    def add_report(self, finding_id, report_path):
-        self.state["reports"]["generated"].append({
-            "finding_id": finding_id,
-            "report_path": report_path,
-            "generated_at": datetime.now().isoformat(),
-        })
+    def set_scope(self, in_scope: list, out_scope: list,
+                  program: str = "", platform: str = "") -> None:
+        self.state["scope"] = {
+            "in_scope": in_scope,
+            "out_scope": out_scope,
+            "program": program,
+            "platform": platform,
+        }
         self.save()
 
-    # --- Model usage ---
+    # ── Recon ────────────────────────────────────────────────────────────
 
-    def track_model_call(self, model_name):
-        key = f"{model_name}_calls"
+    def set_recon(self, subdomains: list = None, live_hosts: list = None,
+                  tech_stack: list = None, urls: list = None) -> None:
+        if subdomains is not None:
+            self.state["recon"]["subdomains"] = subdomains
+        if live_hosts is not None:
+            self.state["recon"]["live_hosts"] = live_hosts
+        if tech_stack is not None:
+            self.state["recon"]["tech_stack"] = tech_stack
+        if urls is not None:
+            self.state["recon"]["urls_with_params"] = urls
+        self.save()
+
+    # ── Model usage ──────────────────────────────────────────────────────
+
+    def track_model(self, model: str) -> None:
+        self.state["model_usage"]["total_steps"] += 1
+        key = f"{model.lower()}_steps"
         if key in self.state["model_usage"]:
             self.state["model_usage"][key] += 1
+        self.save()
 
-    # --- Session log ---
+    # ── Resume helpers ───────────────────────────────────────────────────
 
-    def log(self, message):
-        """Add entry to session log for resume context."""
-        self.state["session_log"].append({
-            "at": datetime.now().isoformat(),
-            "msg": message,
-        })
-        # Keep last 200 log entries
-        if len(self.state["session_log"]) > 200:
-            self.state["session_log"] = self.state["session_log"][-200:]
-
-    # --- Resume summary ---
-
-    def get_resume_summary(self):
-        """Generate a human-readable summary for resuming a hunt."""
+    def get_resumption_prompt(self) -> str:
+        """Generate a prompt for Claude Code to resume from."""
         s = self.state
-        lines = [
-            f"╔══════════════════════════════════════════════════╗",
-            f"║  HUNT STATE: {s['target']:<37}║",
-            f"╚══════════════════════════════════════════════════╝",
-            f"",
-            f"  Phase:     {s['phase']}",
-            f"  Started:   {s['created_at'][:19]}",
-            f"  Updated:   {s['updated_at'][:19]}",
-            f"  Cost mode: {s['cost_mode']}",
-            f"",
-        ]
+        completed = [t["name"] for t in s["tools_completed"]]
+        findings_count = len(s["findings"])
+        chains_count = len(s["chains"])
 
-        if s["recon"]["completed"]:
-            r = s["recon"]
-            lines.append(f"  Recon: ✓ {r['subdomains_count']} subs, "
-                        f"{r['live_hosts_count']} live, {r['urls_count']} URLs, "
-                        f"{r['nuclei_findings_count']} nuclei findings")
+        prompt = f"""## RESUMING HUNT: {s['domain']}
+Phase: {s['phase']} | Step: {s['step']} | Findings: {findings_count} | Chains: {chains_count}
 
-        if s["ranking"]["completed"]:
-            rk = s["ranking"]
-            lines.append(f"  Ranking: ✓ {len(rk['p1_endpoints'])} P1, "
-                        f"{len(rk['p2_endpoints'])} P2, "
-                        f"{len(rk['kill_list'])} killed")
+### Completed tools ({len(completed)}):
+{', '.join(completed) if completed else 'None'}
 
-        tested = len(s["hunting"]["tested_endpoints"])
-        untested = len(s["hunting"]["untested_endpoints"])
-        lines.append(f"  Endpoints: {tested} tested, {untested} remaining")
+### Findings so far:
+"""
+        for f in s["findings"][:10]:
+            prompt += f"- [{f.get('severity', '?')}] {f.get('type', '?')}: {f.get('url', '')[:80]}\n"
 
-        lines.append(f"  Findings: {len(s['findings'])} total, "
-                    f"{len(s['validated_findings'])} validated, "
-                    f"{len(s['killed_findings'])} killed")
+        if s.get("endpoints_remaining"):
+            prompt += f"\n### Endpoints remaining: {len(s['endpoints_remaining'])}\n"
 
-        if s["hunting"]["partial_signals"]:
-            lines.append(f"  Partial signals: {len(s['hunting']['partial_signals'])}")
+        prompt += f"\n### Next: Continue from phase '{s['phase']}', skip completed tools.\n"
+        prompt += "DO NOT re-run completed tools. Pick up from the next unfinished step.\n"
 
-        if s["chain_candidates"]:
-            untested_chains = [c for c in s["chain_candidates"] if c["status"] == "untested"]
-            lines.append(f"  Chain candidates: {len(untested_chains)} untested")
+        return prompt
 
-        reports = len(s["reports"]["generated"])
-        lines.append(f"  Reports: {reports} generated")
-
-        mu = s["model_usage"]
-        lines.append(f"\n  Model calls: Haiku={mu['haiku_calls']}, "
-                    f"Sonnet={mu['sonnet_calls']}, Opus={mu['opus_calls']}")
-
-        # Recent session log
-        recent = s["session_log"][-10:]
-        if recent:
-            lines.append(f"\n  Recent activity:")
-            for entry in recent:
-                lines.append(f"    [{entry['at'][11:19]}] {entry['msg']}")
-
-        # Next action
-        lines.append(f"\n  ► Next: ", )
-        if s["phase"] == "not_started":
-            lines[-1] += "Start with scope import"
-        elif s["phase"] == "scope":
-            lines[-1] += "Run recon"
-        elif s["phase"] == "recon":
-            lines[-1] += "Rank attack surface"
-        elif s["phase"] == "ranking":
-            lines[-1] += "Begin hunting"
-        elif s["phase"] == "hunting":
-            if untested > 0:
-                next_ep = s["hunting"]["untested_endpoints"][0]
-                lines[-1] += f"Continue hunting — next: {next_ep}"
-            else:
-                lines[-1] += "All endpoints tested — validate findings"
-        elif s["phase"] == "validating":
-            lines[-1] += "Continue validation / generate reports"
-        elif s["phase"] == "reporting":
-            lines[-1] += "Review and submit reports"
-        elif s["phase"] == "complete":
-            lines[-1] += "Hunt complete — review reports"
-
-        return "\n".join(lines)
-
-
-def main():
-    """CLI for managing hunt state."""
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Hunt State Manager")
-    parser.add_argument("target", help="Target domain")
-    parser.add_argument("--show", action="store_true", help="Show current state")
-    parser.add_argument("--reset", action="store_true", help="Reset state")
-    parser.add_argument("--json", action="store_true", help="Output raw JSON")
-    args = parser.parse_args()
-
-    state = HuntStateManager(args.target)
-
-    if args.reset:
-        state.save()
-        print(f"State reset for {args.target}")
-        return
-
-    found = state.load()
-
-    if args.json:
-        print(json.dumps(state.state, indent=2))
-    elif found:
-        print(state.get_resume_summary())
-    else:
-        print(f"No previous state found for {args.target}")
-        print("Start a new hunt with: /fullhunt " + args.target)
-
-
-if __name__ == "__main__":
-    main()
+    def get_status_summary(self) -> str:
+        """One-line status for display."""
+        s = self.state
+        return (
+            f"Phase: {s['phase']} | Step: {s['step']} | "
+            f"Tools: {len(s['tools_completed'])} done, "
+            f"{len(s['tools_failed'])} failed | "
+            f"Findings: {len(s['findings'])} | "
+            f"Chains: {len(s['chains'])}")

@@ -1,5 +1,5 @@
 ---
-description: "Full autonomous bug bounty hunt — scope import → recon → rank → hunt → exploit → validate → dedup → report. Takes a domain and outputs HackerOne-ready vulnerability reports. Usage: /fullhunt target.com [--platform hackerone] [--program handle] [--mode balanced]"
+description: "Full autonomous bug bounty hunt — scope import → recon → rank → hunt → exploit → validate → dedup → report. Takes a domain and outputs HackerOne-ready vulnerability reports. Usage: /fullhunt target.com [--platform hackerone] [--program handle] [--mode cheap]"
 ---
 
 # /fullhunt — End-to-End Autonomous Bug Bounty Hunt
@@ -15,81 +15,148 @@ One command. Domain in, vulnerability reports out. **ZERO questions asked — Cl
 /fullhunt target.com --mode quality                     # maximum finding quality
 ```
 
-## What This Does
+## ⚠️ TOKEN OPTIMIZATION — READ THIS FIRST
 
-Runs the COMPLETE bug bounty pipeline autonomously:
+You are running on a Claude PRO subscription with token limits. **Every step must be as token-efficient as possible.**
+
+### Model & Effort Routing (MANDATORY)
+
+**You MUST set the model and effort level per phase. This is NOT optional.**
+
+| Phase | Model | Effort | Max Tokens | Why |
+|-------|-------|--------|-----------|-----|
+| 0. Intelligence | Haiku | min | 200 | Read hunt_state.json, 3 lines of context |
+| 1. Hacktivity | Haiku | low | 500 | Pattern extraction from H1 |
+| 2. Scope import | Haiku | min | 200 | Parse scope JSON |
+| 3. Recon | Haiku | low | 300 | Run subfinder/httpx, save results |
+| 4. WAF + wordlists | Haiku | low | 300 | Setup, zero reasoning needed |
+| 5. API discovery | Haiku | low | 300 | Run tool, save endpoints |
+| 6. Subdomain takeover | Haiku | low | 200 | Run tool, check CNAME |
+| 7. Active hunting | Sonnet | high | 2000 | This is where reasoning matters |
+| 8. IDOR/auth/JWT | Sonnet | high | 2000 | Complex exploitation logic |
+| 9. Chain building | Sonnet | high | 2000 | A→B→C reasoning |
+| 10. PoC generation | Sonnet | medium | 1000 | Structured output |
+| 11. Validation | Sonnet | medium | 1000 | 7-Question Gate |
+| 12. Report writing | Sonnet | high | 2000 | Quality writing |
+
+### Token-Saving Rules (MANDATORY)
+
+1. **DO NOT explain what you're doing** — just run the tool and move on
+2. **DO NOT summarize tool output** back to yourself — read it, act on it, save to state
+3. **DO NOT repeat tool arguments** in your reasoning — the tool already knows
+4. **Batch tool calls** — run independent tools in parallel when possible
+5. **Minimize reasoning text** — 1-2 sentences max between tool calls
+6. **NEVER re-read files** you already have in context
+7. **Save ALL state to disk** — don't rely on conversation context
+
+### Output Format Between Steps
+
+Instead of verbose reasoning, use this compact format:
 
 ```
-1. SCOPE       Import scope from HackerOne/Bugcrowd or accept manual domains
-2. RECON       Subdomains, live hosts, URLs, JS analysis, tech fingerprinting
-3. RANK        AI-prioritized attack surface (P1/P2/Kill)
-4. HUNT        Active exploitation testing on every P1 endpoint:
-                 → IDOR (ID swap, method swap, version rollback)
-                 → Auth bypass (no auth, wrong auth, role escalation)
-                 → SSRF (metadata, internal services, IP bypasses)
-                 → Race conditions (parallel requests on financial endpoints)
-                 → SQLi (error-based, time-based blind)
-                 → SSTI (template engine detection → RCE)
-                 → Business logic (price manipulation, workflow bypass)
-                 → Header injection (CORS, Host, cache poisoning)
-5. CHAIN       When bug A found → hunt for B and C (A→B→C exploit chains)
-6. VERIFY      Prove exploitability with concrete PoC (real requests/responses)
-7. VALIDATE    7-Question Gate — kill weak findings before wasting report time
-8. DEDUP       Compare against HackerOne Hacktivity — avoid submitting duplicates
-9. REPORT      Generate HackerOne-format reports with full PoC, CVSS, impact
+[Phase X] tool_name → result_summary (1 line)
+[Phase X] next_tool → ...
 ```
 
-## Model Routing (Pro Subscription Optimization)
+## Session Persistence (CRASH-PROOF)
 
-| Phase | Model | Effort | Why |
-|-------|-------|--------|-----|
-| Scope import | Haiku | Low | Simple API parsing |
-| Recon | Haiku | Low | Tool orchestration |
-| Ranking | Haiku | Medium | Pattern matching |
-| Hunting | Sonnet | High | Reasoning about vulns |
-| Chain building | Sonnet | Max | Complex exploit logic |
-| Validation | Sonnet | High | Gate evaluation |
-| Report writing | Opus | High | Quality writing |
+**Hunt state is saved to `hunt-memory/sessions/<target>_state.json` after EVERY tool call.**
 
-## Session Persistence
+### How It Works
 
-Hunt state is saved after every step to `hunt-memory/sessions/<target>_state.json`.
+1. At start: load `hunt_state.py` → check if state file exists
+2. If exists: resume from saved phase, skip completed tools
+3. After each tool: `state.complete_tool(name)` → auto-saves to disk
+4. After each finding: `state.add_finding({...})` → auto-saves to disk
 
-If you close Claude Code and reopen later:
-- State is automatically loaded when you run `/fullhunt target.com` again
-- Or use `/resume target.com` to see where you left off and continue
+### On Resume (after limits/crash/close)
 
-Saves: phase, scope, recon results, tested/untested endpoints, findings,
-chains, validation results, reports generated, model usage.
+When user types `/fullhunt target.com` or `/resume target.com`:
 
-## Autonomy
+```python
+from hunt_state import HuntState
+state = HuntState("target.com")
+if state.get_phase() != "init":
+    # RESUME — print status and continue
+    print(state.get_resumption_prompt())
+    # Skip all completed tools, continue from current phase
+else:
+    # FRESH HUNT — start from phase 0
+```
 
-**This command runs 100% autonomously:**
-- Claude makes ALL attack decisions — never asks the user
-- Multiple attack vectors? Tests ALL of them in priority order
-- If something fails, skips it and continues — never stops to ask
-- You see output ONLY when findings are discovered or reports are generated
+**CRITICAL: Check `state.is_tool_completed("tool_name")` BEFORE running any tool.
+If already completed, SKIP IT. Do not waste tokens re-running completed steps.**
 
-## Safety
+## Pipeline Steps
 
-- Every URL checked against scope before any request
-- Every request logged to audit.jsonl
-- Rate limited (2 req/sec testing, 10 req/sec recon)
-- Circuit breaker on 5 consecutive 403/429/timeout
-- Reports NEVER auto-submitted — review in `reports/` first
-- Destructive methods (PUT/DELETE) are tested but with read-only verification first
+```python
+from hunt_state import HuntState
+import sys, os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "tools"))
+
+state = HuntState(DOMAIN)
+
+# Phase 0: Intelligence (Haiku/min)
+if not state.is_tool_completed("hunt_intel"):
+    state.start_tool("hunt_intel")
+    from hunt_intel import HuntIntel
+    intel = HuntIntel()
+    strategy = intel.suggest_strategy(DOMAIN)
+    state.complete_tool("hunt_intel")
+
+# Phase 1: Hacktivity (Haiku/low)
+if not state.is_tool_completed("learn_hacktivity"):
+    state.start_tool("learn_hacktivity")
+    # ... run h1_collector or hacktivity learner
+    state.complete_tool("learn_hacktivity")
+
+# Phase 2: Recon (Haiku/low)
+if not state.is_tool_completed("recon"):
+    state.start_tool("recon")
+    # ... run subfinder, httpx, tech detection
+    state.complete_tool("recon")
+
+# Phase 3: Pre-hunt (Haiku/low)
+if not state.is_tool_completed("waf_detect"):
+    # ...WAF, wordlists, nuclei gen
+    pass
+
+if not state.is_tool_completed("api_discovery"):
+    # ...Swagger/GraphQL/debug endpoint discovery
+    pass
+
+if not state.is_tool_completed("subdomain_takeover"):
+    # ...dangling CNAME check
+    pass
+
+# Phase 4: Active Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
+# Run tools from priority table, skip completed ones
+# After each finding: state.add_finding({...})
+# After each tool: state.complete_tool(name)
+
+# Phase 5: Report (Sonnet/high)
+if not state.is_tool_completed("generate_report"):
+    from report_finalizer import ReportFinalizer
+    report = ReportFinalizer(DOMAIN)
+    report.generate()
+    report.save()
+    state.complete_tool("generate_report", had_findings=True)
+
+state.set_phase("done")
+state.save()
+```
 
 ## After /fullhunt
 
-1. Review generated reports in `reports/<target>/`
-2. Run `/validate` on any findings you want to double-check
-3. Run `/compare` to check for duplicates before submitting
-4. Submit manually on HackerOne/Bugcrowd
-5. Run `/remember` to save successful patterns to hunt memory
+1. Review reports in `findings/<target>/reports/`
+2. Run `/validate` on any finding
+3. Run `/compare` to check for dupes
+4. Submit manually
+5. Run `/remember` to save patterns
 
 ## Requirements
 
-- Kali Linux with Go tools installed (`./install_tools.sh`)
-- Two test accounts on target (attacker + victim) for IDOR testing
-- `interactsh-client` for OOB SSRF detection (installed by install_tools.sh)
-- Optional: `H1_API_TOKEN` env var for HackerOne scope import
+- Kali Linux with tools installed (`./setup_hunter.sh`)
+- Two test accounts for IDOR testing
+- `interactsh-client` for OOB SSRF detection
+- Optional: `H1_API_TOKEN`, `GITHUB_TOKEN`, `HUNT_USERNAME`/`HUNT_PASSWORD`

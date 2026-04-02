@@ -1,10 +1,10 @@
 ---
-description: "Resume a previous hunt — loads saved state, shows progress, and continues from where you left off. Session-persistent across Claude Code restarts. Usage: /resume target.com"
+description: "Resume a previous hunt that was interrupted (limits, crash, close). Loads saved state and continues from exactly where you left off. Usage: /resume target.com"
 ---
 
-# /resume — Resume Previous Hunt
+# /resume — Resume Interrupted Hunt
 
-Pick up exactly where you left off. Session state is saved automatically.
+Resumes from the exact step where you left off. Uses `hunt_state.py` to load saved state from disk.
 
 ## Usage
 
@@ -12,79 +12,88 @@ Pick up exactly where you left off. Session state is saved automatically.
 /resume target.com
 ```
 
-## What This Does
-
-1. Loads saved hunt state from `hunt-memory/sessions/<target>_state.json`
-2. Shows complete progress summary:
-   - Current phase (recon/ranking/hunting/validating/reporting)
-   - Endpoints tested vs remaining
-   - Findings (validated, killed, partial signals)
-   - Chain candidates to investigate
-   - Model usage (Haiku/Sonnet/Opus calls)
-3. Shows recent activity log (last 10 actions)
-4. Recommends next action
-5. Continues the hunt from the exact point it stopped
-
 ## How It Works
 
-Every `/fullhunt`, `/hunt`, and `/autopilot` session automatically saves state:
-- Phase progress
-- Scope configuration
-- Recon results summary
-- Attack surface ranking (P1/P2/Kill)
-- Every tested endpoint + result
-- Every untested endpoint remaining
-- All findings (with PoC data)
-- Validation results
-- Chain candidates
-- Generated reports
-- Model usage tracking
+### Step 1: Load State (Haiku/min effort)
 
-When you close Claude Code and reopen:
-```
-/resume target.com
+```python
+import sys, os
+sys.path.insert(0, os.path.join(os.getcwd(), "tools"))
+from hunt_state import HuntState
+
+state = HuntState("TARGET_DOMAIN")
+phase = state.get_phase()
 ```
 
-Claude reads the state file and continues from the exact step.
+### Step 2: Check If There's Anything to Resume
 
-## Output Example
+If `phase == "init"` → No previous hunt found. Tell user to run `/fullhunt target.com` instead.
 
-```
-╔══════════════════════════════════════════════════╗
-║  HUNT STATE: target.com                          ║
-╚══════════════════════════════════════════════════╝
+If `phase == "done"` → Hunt already completed. Show final stats and point to reports.
 
-  Phase:     hunting
-  Started:   2026-03-30T12:00:00
-  Updated:   2026-03-30T14:30:00
-  Cost mode: balanced
+Otherwise → Print resumption prompt and continue.
 
-  Recon: ✓ 142 subs, 38 live, 1250 URLs, 3 nuclei findings
-  Ranking: ✓ 12 P1, 24 P2, 6 killed
-  Endpoints: 8 tested, 28 remaining
-  Findings: 2 total, 1 validated, 0 killed
-  Partial signals: 3
-  Chain candidates: 1 untested
+### Step 3: Print Status
 
-  Model calls: Haiku=15, Sonnet=42, Opus=1
-
-  Recent activity:
-    [14:28:32] Tested: /api/v2/orders/{id} [idor] → finding
-    [14:29:15] Finding: FIND-002 — idor on /api/v2/orders/{id}
-    [14:30:00] Phase: hunting → hunting (continuing)
-
-  ► Next: Continue hunting — next: /api/v2/users/{id}/export
+```python
+print(state.get_status_summary())
+print(state.get_resumption_prompt())
 ```
 
-## Under the Hood
+This outputs:
+```
+Phase: hunting | Step: 14 | Tools: 8 done, 1 failed | Findings: 3 | Chains: 1
 
-```bash
-python3 tools/hunt_state.py target.com --show
+## RESUMING HUNT: target.com
+### Completed tools (8):
+hunt_intel, learn_hacktivity, recon, waf_detect, nuclei_gen, api_discovery, ...
+
+### Findings so far:
+- [HIGH] IDOR: https://target.com/api/users/123
+- [CRITICAL] SSRF: https://target.com/proxy?url=
+- [MEDIUM] Open Redirect: https://target.com/redirect?to=
+
+### Next: Continue from phase 'hunting', skip completed tools.
 ```
 
-## If No Previous Hunt
+### Step 4: Continue the Hunt
+
+**CRITICAL RULES FOR RESUME:**
+
+1. **DO NOT re-run completed tools** — check `state.is_tool_completed("tool_name")` first
+2. **DO NOT re-read recon data** if already in `state.state["recon"]`
+3. **DO NOT re-analyze scope** if already in `state.state["scope"]`
+4. **Start from the current phase** — don't go back to Phase 0
+5. **Use the same model/effort routing** as fullhunt.md
+
+### Step 5: Continue Running Fullhunt Pipeline
+
+Pick up from the current phase and continue through the fullhunt pipeline.
+Skip all tools that `state.is_tool_completed()` returns True for.
+Save state after every tool with `state.complete_tool()`.
+
+## State File Location
 
 ```
-No previous state found for target.com
-Start a new hunt with: /fullhunt target.com
+hunt-memory/sessions/<target>_state.json
 ```
+
+## What's Saved
+
+- Phase, step counter
+- Scope (in-scope, out-of-scope domains)
+- Recon results (subdomains, live hosts, tech stack, URLs)
+- All completed/skipped/failed tools
+- All findings with timestamps
+- All chains discovered
+- Endpoints tested vs remaining
+- Model usage stats
+
+## Edge Cases
+
+| Situation | Action |
+|-----------|--------|
+| State file corrupted | Start fresh, warn user |
+| State file from >7 days ago | Warn about stale recon, offer fresh start |
+| Tool was mid-execution when interrupted | Re-run only that tool |
+| New endpoints discovered since last run | Add to remaining queue |
