@@ -175,7 +175,30 @@ Fuzzing: arjun, paramspider, xsstrike
 Analysis: gf, anew, qsreplace, trufflehog, commix
 Takeover: subzy
 OOB: interactsh-client
-Wordlists: SecLists, GF patterns, nuclei templates
+Exploit: msfconsole, searchsploit
+
+### SecLists Wordlists (ALWAYS USE THESE — `/usr/share/seclists/`)
+
+| Task | Wordlist |
+|---|---|
+| **Dir fuzzing** | `/usr/share/seclists/Discovery/Web-Content/raft-large-directories.txt` |
+| **File discovery** | `/usr/share/seclists/Discovery/Web-Content/raft-large-files.txt` |
+| **Common dirs (fast)** | `/usr/share/seclists/Discovery/Web-Content/common.txt` |
+| **API endpoints** | `/usr/share/seclists/Discovery/Web-Content/api/api-endpoints.txt` |
+| **API paths** | `/usr/share/seclists/Discovery/Web-Content/api/api-seen-in-wild.txt` |
+| **Parameters** | `/usr/share/seclists/Discovery/Web-Content/burp-parameter-names.txt` |
+| **Subdomains** | `/usr/share/seclists/Discovery/DNS/subdomains-top1million-110000.txt` |
+| **DNS (deep)** | `/usr/share/seclists/Discovery/DNS/deepmagic.com-prefixes-top500.txt` |
+| **LFI** | `/usr/share/seclists/Fuzzing/LFI/LFI-Jhaddix.txt` |
+| **SQLi** | `/usr/share/seclists/Fuzzing/SQLi/quick-SQLi.txt` |
+| **XSS** | `/usr/share/seclists/Fuzzing/XSS/XSS-Jhaddix.txt` |
+| **SSRF** | `/usr/share/seclists/Fuzzing/SSRF/ssrf-common-payloads.txt` |
+| **Command inject** | `/usr/share/seclists/Fuzzing/command-injection-commix.txt` |
+| **Passwords** | `/usr/share/seclists/Passwords/Common-Credentials/10k-most-common.txt` |
+| **Usernames** | `/usr/share/seclists/Usernames/top-usernames-shortlist.txt` |
+| **Web shells** | `/usr/share/seclists/Web-Shells/` |
+
+**Rule: Never use small/custom wordlists when SecLists has a better one. Always prefer SecLists.**
 
 ## Critical Rules (Always Active — from `rules/`)
 
