@@ -85,6 +85,12 @@ TOOLS = [
     ("apk_analyzer", "APKAnalyzer", ["analyze"]),
     ("multi_target", "MultiTargetQueue", ["add", "next", "stats"]),
     ("browser_auto", "BrowserAuto", ["start", "login", "screenshot_poc"]),
+    # Intelligence tools
+    ("github_dorker", "GitHubDorker", ["dork", "quick_scan"]),
+    ("shodan_recon", "ShodanRecon", ["internetdb_lookup", "find_exposed_services"]),
+    ("wayback_analyzer", "WaybackAnalyzer", ["analyze", "find_removed_endpoints"]),
+    ("auto_scope", "AutoScope", ["load", "list_configs"]),
+    ("recon_cron", "ReconCron", ["run_once", "check_subdomains"]),
 ]
 
 # ── Dependency checks ────────────────────────────────────────────────────

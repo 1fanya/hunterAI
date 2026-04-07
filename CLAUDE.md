@@ -156,6 +156,15 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | `multi_target.py` | **Multi-program queue** — priority hunting across multiple targets |
 | `browser_auto.py` | **Playwright automation** — auth flows, screenshot PoCs, CSRF/OAuth tests |
 
+### Intelligence & OSINT
+| Tool | Purpose |
+|---|---|
+| `github_dorker.py` | **GitHub code search** — leaked secrets, .env files, endpoints, credentials |
+| `shodan_recon.py` | **Shodan/InternetDB** — passive port scan, exposed services, vulns (no API key needed) |
+| `wayback_analyzer.py` | **Wayback Machine** — find removed endpoints, old API versions, debug pages |
+| `auto_scope.py` | **Auto-scope loader** — H1 program handle → scope config, zero-friction start |
+| `recon_cron.py` | **Continuous recon** — background subdomain monitor + Telegram alerts on changes |
+
 ### Pipeline & Intelligence
 | Tool | Purpose |
 |---|---|
