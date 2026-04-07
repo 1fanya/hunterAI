@@ -142,6 +142,20 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | `cve_engine.py` | **Version→CVE→Exploit lookup** (NVD + CISA KEV + ExploitDB + MSF) |
 | `msf_adapter.py` | **Metasploit CLI adapter** (search/check/exploit via msfconsole) |
 
+### Elite Recon & Analysis
+| Tool | Purpose |
+|---|---|
+| `js_analyzer.py` | **JS source map deobfuscation** + API endpoint/secret/XSS sink extraction |
+| `js_deps_scanner.py` | **JS library version → CVE lookup** (jQuery, lodash, Angular, React, etc.) |
+| `cert_monitor.py` | **Certificate Transparency** subdomain monitor (crt.sh, tracks new subs) |
+| `apk_analyzer.py` | **APK decompile** → extract endpoints, secrets, network configs |
+| `nuclei_templater.py` | **Auto-generate nuclei YAML** from confirmed findings for reuse |
+| `h1_api.py` | **HackerOne API** — scope import, Hacktivity dedup, bounty stats |
+| `payload_mutator.py` | **WAF bypass engine** — 50+ XSS/SQLi/SSRF/LFI mutation strategies |
+| `telegram_notifier.py` | **Real-time Telegram alerts** — findings, CVEs, hunt status |
+| `multi_target.py` | **Multi-program queue** — priority hunting across multiple targets |
+| `browser_auto.py` | **Playwright automation** — auth flows, screenshot PoCs, CSRF/OAuth tests |
+
 ### Pipeline & Intelligence
 | Tool | Purpose |
 |---|---|

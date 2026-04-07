@@ -74,6 +74,17 @@ TOOLS = [
     # CVE & Exploit engine
     ("cve_engine", "CVEEngine", ["lookup", "search_nvd", "search_exploitdb", "is_kev"]),
     ("msf_adapter", "MetasploitAdapter", ["search"]),
+    # Elite tools
+    ("js_analyzer", "JSAnalyzer", ["analyze_all", "discover_js_files"]),
+    ("nuclei_templater", "NucleiTemplater", ["from_finding", "from_cve"]),
+    ("h1_api", "HackerOneAPI", ["get_scope", "search_hacktivity", "check_duplicate"]),
+    ("payload_mutator", "PayloadMutator", ["generate_xss_payloads", "generate_sqli_payloads"]),
+    ("telegram_notifier", "TelegramNotifier", ["send", "finding_alert"]),
+    ("cert_monitor", "CertMonitor", ["check", "extract_subdomains"]),
+    ("js_deps_scanner", "JSDepsScanner", ["scan_url", "check_vulns"]),
+    ("apk_analyzer", "APKAnalyzer", ["analyze"]),
+    ("multi_target", "MultiTargetQueue", ["add", "next", "stats"]),
+    ("browser_auto", "BrowserAuto", ["start", "login", "screenshot_poc"]),
 ]
 
 # ── Dependency checks ────────────────────────────────────────────────────

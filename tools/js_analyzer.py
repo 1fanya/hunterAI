@@ -1,371 +1,175 @@
 #!/usr/bin/env python3
 """
-JS Analyzer — JavaScript Bundle Analysis for Bug Bounty
+js_analyzer.py — JavaScript Source Map & Endpoint Analyzer
 
-Extracts from JS files:
-- API endpoints and routes
-- Hardcoded secrets (API keys, tokens, passwords)
-- Hidden admin/debug routes
-- Framework/library detection with versions
-- WebSocket endpoints
-- Cloud service references (S3, Firebase, etc.)
+Deobfuscates JS bundles, extracts hidden API endpoints, secrets,
+internal paths, and developer comments that reveal attack surface.
 
 Usage:
-    python3 js_analyzer.py --target target.com --recon-dir recon/target.com/
-    python3 js_analyzer.py --url https://target.com/static/app.js
-    python3 js_analyzer.py --file /tmp/downloaded.js
+    from js_analyzer import JSAnalyzer
+    analyzer = JSAnalyzer("https://target.com")
+    results = analyzer.analyze_all()
 """
-
-import argparse
 import json
 import os
 import re
-import sys
-from datetime import datetime
-from urllib.request import Request, urlopen
-from urllib.error import HTTPError, URLError
+import time
+from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-
-GREEN = "\033[0;32m"
-RED = "\033[0;31m"
-YELLOW = "\033[1;33m"
-CYAN = "\033[0;36m"
-BOLD = "\033[1m"
-NC = "\033[0m"
+try:
+    import requests
+except ImportError:
+    requests = None
 
 
-def log(level, msg):
-    colors = {"ok": GREEN, "err": RED, "warn": YELLOW, "info": CYAN}
-    symbols = {"ok": "+", "err": "-", "warn": "!", "info": "*"}
-    print(f"{colors.get(level, '')}{BOLD}[{symbols.get(level, '*')}]{NC} {msg}")
+class JSAnalyzer:
+    """JavaScript source analyzer for bug bounty hunting."""
 
-
-# Regex patterns for extracting valuable data from JS
-PATTERNS = {
-    "api_endpoints": [
-        r'["\']/(api|v\d+|graphql|rest|internal|admin|auth|oauth|ws)(/[a-zA-Z0-9/_\-{}:.]+)["\']',
-        r'["\']https?://[a-zA-Z0-9.-]+(/[a-zA-Z0-9/_\-{}:.?=&]+)["\']',
+    API_PATTERNS = [
+        r'["\']/(api|v\d|graphql|rest|internal|admin|auth|oauth|ws)/[^"\']*["\']',
+        r'["\']https?://[^"\']+/api/[^"\']*["\']',
         r'fetch\s*\(\s*["\']([^"\']+)["\']',
         r'axios\.\w+\s*\(\s*["\']([^"\']+)["\']',
         r'\.get\s*\(\s*["\']([^"\']+)["\']',
         r'\.post\s*\(\s*["\']([^"\']+)["\']',
         r'\.put\s*\(\s*["\']([^"\']+)["\']',
         r'\.delete\s*\(\s*["\']([^"\']+)["\']',
-        r'url\s*[=:]\s*["\']([^"\']*(?:api|v\d|auth|admin)[^"\']*)["\']',
-    ],
-    "secrets": [
-        (r'["\']?(?:api[_-]?key|apikey)["\']?\s*[=:]\s*["\']([a-zA-Z0-9_\-]{20,})["\']', "api_key"),
-        (r'["\']?(?:secret|client_secret)["\']?\s*[=:]\s*["\']([a-zA-Z0-9_\-/+=]{20,})["\']', "secret"),
-        (r'["\']?(?:token|access_token|auth_token)["\']?\s*[=:]\s*["\']([a-zA-Z0-9_\-/+=.]{20,})["\']', "token"),
-        (r'["\']?(?:password|passwd|pwd)["\']?\s*[=:]\s*["\']([^"\']{8,})["\']', "password"),
-        (r'(?:AKIA[A-Z0-9]{16})', "aws_access_key"),
-        (r'(?:ghp_[a-zA-Z0-9]{36})', "github_token"),
-        (r'(?:sk-[a-zA-Z0-9]{48})', "openai_key"),
-        (r'(?:xox[bpas]-[a-zA-Z0-9\-]+)', "slack_token"),
-        (r'(?:AIza[a-zA-Z0-9_\-]{35})', "google_api_key"),
-        (r'(?:sq0[a-z]{3}-[a-zA-Z0-9_\-]{22,})', "square_key"),
-        (r'(?:sk_live_[a-zA-Z0-9]{24,})', "stripe_key"),
-        (r'(?:pk_live_[a-zA-Z0-9]{24,})', "stripe_pub_key"),
-    ],
-    "admin_routes": [
-        r'["\']/(admin|dashboard|internal|debug|_debug|management|backstage|superadmin)[/\w]*["\']',
-        r'["\']/(actuator|metrics|health|status|swagger|api-docs|graphiql)[/\w]*["\']',
-        r'["\']/(phpmyadmin|adminer|wp-admin|wp-login|elmah|trace)[/\w]*["\']',
-    ],
-    "cloud_refs": [
-        (r'([a-zA-Z0-9._-]+\.s3\.amazonaws\.com)', "s3_bucket"),
-        (r'([a-zA-Z0-9._-]+\.s3-[a-z0-9-]+\.amazonaws\.com)', "s3_bucket_regional"),
-        (r'([a-zA-Z0-9._-]+\.firebaseio\.com)', "firebase"),
-        (r'([a-zA-Z0-9._-]+\.firebaseapp\.com)', "firebase_app"),
-        (r'([a-zA-Z0-9._-]+\.cloudfront\.net)', "cloudfront"),
-        (r'([a-zA-Z0-9._-]+\.herokuapp\.com)', "heroku"),
-        (r'([a-zA-Z0-9._-]+\.azurewebsites\.net)', "azure"),
-        (r'([a-zA-Z0-9._-]+\.blob\.core\.windows\.net)', "azure_blob"),
-    ],
-    "websocket": [
-        r'wss?://[a-zA-Z0-9._\-/]+',
-    ],
-}
+        r'XMLHttpRequest.*open\s*\(["\'](?:GET|POST|PUT|DELETE)["\']\s*,\s*["\']([^"\']+)',
+        r'url:\s*["\']([^"\']+)["\']',
+        r'endpoint:\s*["\']([^"\']+)["\']',
+        r'baseURL:\s*["\']([^"\']+)["\']',
+    ]
 
+    SECRET_PATTERNS = [
+        (r'["\'](?:api[_-]?key|apikey|api[_-]?token)["\']?\s*[:=]\s*["\']([^"\']{10,})["\']', "API Key"),
+        (r'["\'](?:secret|password|passwd|pwd|token)["\']?\s*[:=]\s*["\']([^"\']{6,})["\']', "Secret"),
+        (r'(?:aws_access_key_id|AKIA)[A-Z0-9]{16,}', "AWS Key"),
+        (r'(?:ghp_|github_pat_)[A-Za-z0-9_]{36,}', "GitHub Token"),
+        (r'sk-[A-Za-z0-9]{32,}', "OpenAI/Stripe Key"),
+        (r'eyJ[A-Za-z0-9_-]*\.eyJ[A-Za-z0-9_-]*\.[A-Za-z0-9_-]*', "JWT"),
+        (r'(?:mongodb|postgres|mysql|redis)://[^\s"\']+', "DB URL"),
+        (r'-----BEGIN (?:RSA |EC )?PRIVATE KEY-----', "Private Key"),
+    ]
 
-def download_js(url, timeout=15):
-    """Download JS file content."""
-    try:
-        req = Request(url, headers={"User-Agent": "Mozilla/5.0"})
-        with urlopen(req, timeout=timeout) as resp:
-            return resp.read().decode("utf-8", errors="replace")
-    except (HTTPError, URLError) as e:
-        log("warn", f"Could not download {url}: {e}")
+    SINK_PATTERNS = [
+        (r'eval\s*\(', "eval() — code injection sink"),
+        (r'innerHTML\s*=', "innerHTML — XSS sink"),
+        (r'document\.write\s*\(', "document.write — XSS sink"),
+        (r'\.html\s*\(', "jQuery .html() — XSS sink"),
+        (r'window\.location\s*=', "location = open redirect sink"),
+        (r'postMessage\s*\(', "postMessage — XSS vector"),
+        (r'dangerouslySetInnerHTML', "React XSS risk"),
+        (r'__NEXT_DATA__', "Next.js data leak"),
+        (r'localStorage\.(set|get)Item\s*\(\s*["\'](?:token|session|auth)', "Token in localStorage"),
+    ]
+
+    def __init__(self, base_url: str):
+        self.base_url = base_url.rstrip("/")
+        self.session = requests.Session() if requests else None
+        if self.session:
+            self.session.headers["User-Agent"] = (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0")
+            self.session.verify = False
+        self.endpoints = set()
+        self.secrets = []
+        self.findings = []
+
+    def discover_js_files(self, urls: list = None) -> list:
+        js_files = set()
+        for page_url in (urls or [self.base_url])[:10]:
+            try:
+                resp = self.session.get(page_url, timeout=10)
+                for m in re.finditer(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']',
+                                     resp.text, re.IGNORECASE):
+                    js_files.add(urljoin(page_url, m.group(1)))
+                for m in re.finditer(r'["\']([^"\']*(?:bundle|chunk|app|main|vendor)[^"\']*\.js)["\']',
+                                     resp.text):
+                    js_files.add(urljoin(page_url, m.group(1)))
+            except Exception:
+                continue
+        return list(js_files)
+
+    def fetch_source_map(self, js_url: str) -> str:
+        try:
+            resp = self.session.get(js_url, timeout=10)
+            if resp.status_code != 200:
+                return ""
+            m = re.search(r'//[#@]\s*sourceMappingURL\s*=\s*(\S+)', resp.text)
+            if m:
+                map_resp = self.session.get(urljoin(js_url, m.group(1)), timeout=10)
+                if map_resp.status_code == 200:
+                    self.findings.append({"type": "source_map_exposed",
+                                          "severity": "MEDIUM", "url": urljoin(js_url, m.group(1))})
+                    return map_resp.text
+            map_resp = self.session.get(js_url + ".map", timeout=8)
+            if map_resp.status_code == 200 and "sources" in map_resp.text:
+                self.findings.append({"type": "source_map_exposed",
+                                      "severity": "MEDIUM", "url": js_url + ".map"})
+                return map_resp.text
+        except Exception:
+            pass
         return ""
 
+    def analyze_js(self, js_url: str) -> dict:
+        result = {"url": js_url, "endpoints": [], "secrets": [], "sinks": []}
+        try:
+            resp = self.session.get(js_url, timeout=15)
+            if resp.status_code != 200:
+                return result
 
-def analyze_js(content, source_name="unknown"):
-    """Analyze JS content for security-relevant data."""
-    results = {
-        "source": source_name,
-        "api_endpoints": [],
-        "secrets": [],
-        "admin_routes": [],
-        "cloud_refs": [],
-        "websockets": [],
-        "frameworks": [],
-    }
+            content = resp.text
+            sm = self.fetch_source_map(js_url)
+            if sm:
+                try:
+                    for src in json.loads(sm).get("sourcesContent", []):
+                        if src:
+                            content += "\n" + src
+                except Exception:
+                    pass
 
-    if not content:
+            for pat in self.API_PATTERNS:
+                for m in re.finditer(pat, content):
+                    ep = m.group(1) if m.lastindex else m.group(0)
+                    ep = ep.strip("\"'")
+                    if ep and len(ep) > 3:
+                        result["endpoints"].append(ep)
+                        self.endpoints.add(ep)
+
+            for pat, label in self.SECRET_PATTERNS:
+                for m in re.finditer(pat, content):
+                    val = m.group(1) if m.lastindex else m.group(0)
+                    s = {"type": label, "value": val[:50] + "...", "source": js_url}
+                    result["secrets"].append(s)
+                    self.secrets.append(s)
+                    self.findings.append({"type": "secret_in_js", "severity": "HIGH",
+                                          "detail": f"{label} in {os.path.basename(js_url)}", "url": js_url})
+
+            for pat, label in self.SINK_PATTERNS:
+                n = len(re.findall(pat, content))
+                if n:
+                    result["sinks"].append({"type": label, "count": n})
+        except Exception:
+            pass
+        return result
+
+    def analyze_all(self, urls: list = None) -> dict:
+        js_files = self.discover_js_files(urls)
+        results = {"base_url": self.base_url, "js_files": len(js_files),
+                    "analyzed": [], "endpoints": [], "secrets": [], "findings": []}
+        for url in js_files[:30]:
+            a = self.analyze_js(url)
+            if a["endpoints"] or a["secrets"] or a["sinks"]:
+                results["analyzed"].append(a)
+            time.sleep(0.3)
+        results["endpoints"] = sorted(self.endpoints)
+        results["secrets"] = self.secrets
+        results["findings"] = self.findings
         return results
 
-    # Extract API endpoints
-    endpoints = set()
-    for pattern in PATTERNS["api_endpoints"]:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
-            endpoint = match.group(1) if match.lastindex else match.group(0)
-            endpoint = endpoint.strip("'\"")
-            if len(endpoint) > 3 and not endpoint.startswith("//"):
-                endpoints.add(endpoint)
-    results["api_endpoints"] = sorted(endpoints)
-
-    # Extract secrets
-    for pattern, secret_type in PATTERNS["secrets"]:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
-            value = match.group(1) if match.lastindex and match.lastindex >= 1 else match.group(0)
-            # Filter out common false positives
-            if not _is_false_positive_secret(value):
-                results["secrets"].append({
-                    "type": secret_type,
-                    "value": value[:8] + "..." + value[-4:] if len(value) > 16 else value,
-                    "full_length": len(value),
-                    "context": _get_context(content, match.start(), 50),
-                })
-
-    # Extract admin routes
-    admin_routes = set()
-    for pattern in PATTERNS["admin_routes"]:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
-            route = match.group(0).strip("'\"")
-            admin_routes.add(route)
-    results["admin_routes"] = sorted(admin_routes)
-
-    # Extract cloud references
-    for pattern, cloud_type in PATTERNS["cloud_refs"]:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
-            results["cloud_refs"].append({
-                "type": cloud_type,
-                "value": match.group(1) if match.lastindex else match.group(0),
-            })
-
-    # Extract WebSocket endpoints
-    for pattern in PATTERNS["websocket"]:
-        for match in re.finditer(pattern, content, re.IGNORECASE):
-            results["websockets"].append(match.group(0))
-
-    # Detect frameworks
-    results["frameworks"] = _detect_frameworks(content)
-
-    return results
-
-
-def _is_false_positive_secret(value):
-    """Filter out common false positive secrets."""
-    if len(value) < 10:
-        return True
-    # Common placeholder values
-    fp_patterns = [
-        "XXXXXXXX", "example", "placeholder", "YOUR_", "CHANGE_ME",
-        "undefined", "null", "true", "false", "function",
-        "0123456789", "abcdefghij", "test", "dummy", "sample",
-    ]
-    for fp in fp_patterns:
-        if fp.lower() in value.lower():
-            return True
-    # All same character
-    if len(set(value.replace("-", "").replace("_", ""))) < 3:
-        return True
-    return False
-
-
-def _get_context(content, pos, chars=50):
-    """Get surrounding context for a match."""
-    start = max(0, pos - chars)
-    end = min(len(content), pos + chars)
-    return content[start:end].strip()
-
-
-def _detect_frameworks(content):
-    """Detect JS frameworks and libraries."""
-    frameworks = []
-    detections = {
-        "React": [r'react["\s]', r'React\.createElement', r'__REACT'],
-        "Angular": [r'angular\.\w+', r'@angular/', r'ng-app'],
-        "Vue.js": [r'vue["\s]', r'Vue\.\w+', r'__VUE'],
-        "Next.js": [r'__NEXT_DATA__', r'next/router'],
-        "jQuery": [r'jquery', r'\$\.\w+\('],
-        "Express": [r'express\(\)', r'app\.listen'],
-        "Webpack": [r'webpackJsonp', r'__webpack_'],
-        "GraphQL": [r'graphql', r'__typename', r'mutation\s*{'],
-    }
-    for fw, patterns in detections.items():
-        for pattern in patterns:
-            if re.search(pattern, content, re.IGNORECASE):
-                frameworks.append(fw)
-                break
-    return frameworks
-
-
-def analyze_target(target, recon_dir=None):
-    """Analyze all JS files for a target."""
-    all_results = []
-
-    if recon_dir and os.path.isdir(recon_dir):
-        # Find JS URLs from recon data
-        urls_file = os.path.join(recon_dir, "urls.txt")
-        if os.path.exists(urls_file):
-            with open(urls_file) as f:
-                urls = [line.strip() for line in f if line.strip()]
-            js_urls = [u for u in urls if re.search(r'\.js(\?|$)', u, re.IGNORECASE)]
-            log("info", f"Found {len(js_urls)} JS files in recon data")
-
-            for url in js_urls[:50]:  # Limit to 50 JS files
-                log("info", f"Analyzing: {url}")
-                content = download_js(url)
-                if content:
-                    result = analyze_js(content, source_name=url)
-                    if any([result["api_endpoints"], result["secrets"],
-                            result["admin_routes"], result["cloud_refs"]]):
-                        all_results.append(result)
-    else:
-        # Analyze main page JS
-        main_url = f"https://{target}"
-        log("info", f"Fetching main page: {main_url}")
-        content = download_js(main_url)
-        if content:
-            # Extract JS file URLs from HTML
-            js_urls = re.findall(r'src=["\']((?:https?://)?[^"\']+\.js(?:\?[^"\']*)?)["\']',
-                                content, re.IGNORECASE)
-            for js_url in js_urls[:20]:
-                if not js_url.startswith("http"):
-                    js_url = f"https://{target}/{js_url.lstrip('/')}"
-                log("info", f"Analyzing: {js_url}")
-                js_content = download_js(js_url)
-                if js_content:
-                    result = analyze_js(js_content, source_name=js_url)
-                    if any([result["api_endpoints"], result["secrets"],
-                            result["admin_routes"], result["cloud_refs"]]):
-                        all_results.append(result)
-
-    return all_results
-
-
-def print_results(results):
-    """Pretty-print analysis results."""
-    all_endpoints = set()
-    all_secrets = []
-    all_admin = set()
-    all_cloud = []
-    all_frameworks = set()
-
-    for r in results:
-        all_endpoints.update(r["api_endpoints"])
-        all_secrets.extend(r["secrets"])
-        all_admin.update(r["admin_routes"])
-        all_cloud.extend(r["cloud_refs"])
-        all_frameworks.update(r["frameworks"])
-
-    print(f"\n{BOLD}{'='*60}{NC}")
-    print(f"{BOLD}  JS Analysis Results{NC}")
-    print(f"{BOLD}{'='*60}{NC}\n")
-
-    print(f"  Files analyzed: {len(results)}")
-    print(f"  Frameworks detected: {', '.join(all_frameworks) if all_frameworks else 'none'}")
-
-    if all_endpoints:
-        print(f"\n  {CYAN}API Endpoints ({len(all_endpoints)}):{NC}")
-        for ep in sorted(all_endpoints)[:30]:
-            print(f"    → {ep}")
-        if len(all_endpoints) > 30:
-            print(f"    ... and {len(all_endpoints) - 30} more")
-
-    if all_secrets:
-        print(f"\n  {RED}Secrets Found ({len(all_secrets)}):{NC}")
-        for s in all_secrets:
-            print(f"    🔑 [{s['type']}] {s['value']} (length: {s['full_length']})")
-
-    if all_admin:
-        print(f"\n  {YELLOW}Admin/Debug Routes ({len(all_admin)}):{NC}")
-        for route in sorted(all_admin):
-            print(f"    ⚠ {route}")
-
-    if all_cloud:
-        print(f"\n  {CYAN}Cloud References ({len(all_cloud)}):{NC}")
-        seen = set()
-        for c in all_cloud:
-            key = f"{c['type']}:{c['value']}"
-            if key not in seen:
-                print(f"    ☁ [{c['type']}] {c['value']}")
-                seen.add(key)
-
-    print(f"\n{'='*60}\n")
-
-
-def save_results(results, target, output_dir=None):
-    """Save analysis results."""
-    if not output_dir:
-        output_dir = os.path.join(BASE_DIR, "recon", target)
-    os.makedirs(output_dir, exist_ok=True)
-
-    filepath = os.path.join(output_dir, "js_analysis.json")
-    with open(filepath, "w") as f:
-        json.dump({
-            "target": target,
-            "files_analyzed": len(results),
-            "results": results,
-            "analyzed_at": datetime.now().isoformat(),
-        }, f, indent=2)
-
-    log("ok", f"Results saved to {filepath}")
-
-    # Also save extracted endpoints as a file for other tools
-    all_endpoints = set()
-    for r in results:
-        all_endpoints.update(r["api_endpoints"])
-
-    if all_endpoints:
-        ep_file = os.path.join(output_dir, "js_endpoints.txt")
-        with open(ep_file, "w") as f:
-            f.write("\n".join(sorted(all_endpoints)))
-        log("ok", f"Extracted {len(all_endpoints)} endpoints to {ep_file}")
-
-
-def main():
-    parser = argparse.ArgumentParser(description="JS Bundle Analyzer")
-    parser.add_argument("--target", help="Target domain")
-    parser.add_argument("--recon-dir", help="Recon directory with urls.txt")
-    parser.add_argument("--url", help="Analyze a single JS URL")
-    parser.add_argument("--file", help="Analyze a local JS file")
-    parser.add_argument("--json", action="store_true", help="JSON output")
-    args = parser.parse_args()
-
-    if args.file:
-        with open(args.file) as f:
-            content = f.read()
-        results = [analyze_js(content, source_name=args.file)]
-    elif args.url:
-        content = download_js(args.url)
-        results = [analyze_js(content, source_name=args.url)]
-    elif args.target:
-        results = analyze_target(args.target, args.recon_dir)
-    else:
-        log("err", "Provide --target, --url, or --file")
-        sys.exit(1)
-
-    if args.json:
-        print(json.dumps(results, indent=2))
-    else:
-        print_results(results)
-
-    if args.target:
-        save_results(results, args.target)
-
-
-if __name__ == "__main__":
-    main()
+    def save_results(self, target: str):
+        out = Path(f"findings/{target}/js_analysis")
+        out.mkdir(parents=True, exist_ok=True)
+        (out / f"js_{int(time.time())}.json").write_text(
+            json.dumps({"endpoints": sorted(self.endpoints), "secrets": self.secrets,
+                         "findings": self.findings}, indent=2, default=str), encoding="utf-8")
