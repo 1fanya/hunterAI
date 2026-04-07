@@ -71,6 +71,9 @@ TOOLS = [
     ("business_logic", "BusinessLogicTester", ["test_all"]),
     # State persistence
     ("hunt_state", "HuntState", ["complete_tool", "is_tool_completed", "add_finding"]),
+    # CVE & Exploit engine
+    ("cve_engine", "CVEEngine", ["lookup", "search_nvd", "search_exploitdb", "is_kev"]),
+    ("msf_adapter", "MetasploitAdapter", ["search"]),
 ]
 
 # ── Dependency checks ────────────────────────────────────────────────────

@@ -70,14 +70,14 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 
 **NEVER re-run a completed tool. Pick up exactly where you stopped.**
 
-## Commands (16 slash commands)
+## Commands (17 slash commands)
 
 | Command | What It Does |
 |---|---|
 | `/fullhunt` | **Full autonomous hunt** — domain in, reports out |
 | `/recon` | Recon only (subdomains, URLs, JS, tech fingerprinting) |
 | `/hunt` | Active vulnerability hunting |
-| `/validate` | 7-Question Gate on findings |
+| `/validate` | 7-Question Gate on findings (auto-run in pipeline) |
 | `/report` | HackerOne-ready report generation |
 | `/compare` | **Dedup against Hacktivity** before submitting |
 | `/chain` | A→B→C exploit chain building |
@@ -88,6 +88,7 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | `/resume` | **Resume previous hunt** (crash-proof) |
 | `/remember` | Save patterns to hunt memory |
 | `/intel` | CVE + disclosure intel |
+| `/methodology` | **7-phase professional hunting methodology** |
 | `/web3-audit` | Smart contract audit |
 | `/monitor` | Background recon monitoring |
 
@@ -134,6 +135,12 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | `oauth_tester.py` | redirect_uri bypass (9 techniques), state, scope escalation | High |
 | `blind_xss.py` | Callback-based blind XSS payloads + injection point discovery | Medium |
 | `twofa_bypass.py` | Direct access, rate limit, response manipulation | Medium |
+
+### CVE & Exploit Engine
+| Tool | Purpose |
+|---|---|
+| `cve_engine.py` | **Version→CVE→Exploit lookup** (NVD + CISA KEV + ExploitDB + MSF) |
+| `msf_adapter.py` | **Metasploit CLI adapter** (search/check/exploit via msfconsole) |
 
 ### Pipeline & Intelligence
 | Tool | Purpose |

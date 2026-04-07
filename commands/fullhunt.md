@@ -129,6 +129,34 @@ if not state.is_tool_completed("subdomain_takeover"):
     # ...dangling CNAME check
     pass
 
+# Phase 3.5: CVE Hunting (Haiku→Sonnet) — VERSION → CVE → EXPLOIT
+if not state.is_tool_completed("cve_scan"):
+    state.start_tool("cve_scan")
+    from cve_engine import CVEEngine
+    cve = CVEEngine()
+
+    # Extract versions from recon data (HTTP headers, tech stack)
+    tech_stack = state.get_data("tech_stack", {})
+    for product_info in tech_stack.get("versions", []):
+        result = cve.lookup(product_info["product"], product_info["version"])
+        if result["exploitable"]:
+            # Exploitable CVE found — auto-add as finding
+            for cve_match in result["cves"][:3]:
+                if cve_match.get("cvss", 0) >= 7.0:
+                    state.add_finding({
+                        "type": "known_cve",
+                        "cve_id": cve_match["cve_id"],
+                        "cvss": cve_match["cvss"],
+                        "severity": cve_match["severity"],
+                        "product": product_info["product"],
+                        "version": product_info["version"],
+                        "exploits": result["exploits"],
+                        "msf_modules": result["metasploit_modules"],
+                        "kev": cve_match.get("kev", False),
+                    })
+    cve.save_results(DOMAIN, result)
+    state.complete_tool("cve_scan")
+
 # Phase 4: Active Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
 # Run tools from priority table, skip completed ones
 # After each potential finding: run auto-validation IMMEDIATELY
