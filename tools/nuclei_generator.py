@@ -220,7 +220,7 @@ http:
 }
 
 class NucleiGenerator:
-    def __init__(self, target):
+    def __init__(self, target=""):
         self.target = target
         self.out_dir = os.path.join(TEMPLATES_DIR, target)
         os.makedirs(self.out_dir, exist_ok=True)

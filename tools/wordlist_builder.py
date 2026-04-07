@@ -61,7 +61,7 @@ SECLISTS_URLS = {
 
 
 class WordlistBuilder:
-    def __init__(self, target, recon_dir=None):
+    def __init__(self, target="", recon_dir=None):
         self.target = target
         self.recon_dir = recon_dir or os.path.join(BASE_DIR, "recon", target)
         self.output_dir = os.path.join(WORDLIST_DIR, "generated", target)

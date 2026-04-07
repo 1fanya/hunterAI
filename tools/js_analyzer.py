@@ -64,7 +64,7 @@ class JSAnalyzer:
         (r'localStorage\.(set|get)Item\s*\(\s*["\'](?:token|session|auth)', "Token in localStorage"),
     ]
 
-    def __init__(self, base_url: str):
+    def __init__(self, base_url: str = ""):
         self.base_url = base_url.rstrip("/")
         self.session = requests.Session() if requests else None
         if self.session:

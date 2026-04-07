@@ -138,11 +138,15 @@ def check_tools():
             # Try to instantiate (some need args)
             try:
                 if class_name in ("ScopeGuard",):
-                    obj = cls(domain="test.com")
+                    obj = cls(program_name="test.com")
                 elif class_name in ("WordlistBuilder",):
-                    obj = cls(domain="test.com")
+                    obj = cls(target="test.com")
                 elif class_name in ("NucleiGenerator",):
-                    obj = cls(domain="test.com")
+                    obj = cls(target="test.com")
+                elif class_name in ("SessionManager",):
+                    obj = cls(target="test.com")
+                elif class_name in ("JSAnalyzer",):
+                    obj = cls(base_url="https://test.com")
                 elif class_name in ("ChainEngine",):
                     obj = cls(domain="test.com")
                 elif class_name in ("APISecurityTester",):

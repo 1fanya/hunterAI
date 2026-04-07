@@ -63,7 +63,7 @@ class SessionManager:
     never raw passwords.
     """
 
-    def __init__(self, target: str):
+    def __init__(self, target: str = ""):
         self.target = target
         self.sessions_file = os.path.join(SESSIONS_DIR, f"{target}_sessions.json")
         self.sessions = {}  # role -> session_data
