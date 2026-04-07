@@ -158,9 +158,31 @@ if not state.is_tool_completed("cve_scan"):
     state.complete_tool("cve_scan")
 
 # Phase 4: Active Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
+# CRITICAL: DO NOT STOP AFTER 1-2 FINDINGS. TEST EVERY VULN CLASS.
 # Run tools from priority table, skip completed ones
 # After each potential finding: run auto-validation IMMEDIATELY
 # After each tool: state.complete_tool(name)
+
+# Track which vuln classes have been tested
+VULN_CLASSES = [
+    "idor_bola", "auth_bypass", "business_logic", "race_condition",
+    "oauth_sso", "ssrf", "sqli", "xss", "ssti", "jwt",
+    "api_mass_assign", "graphql", "file_upload", "path_traversal",
+    "xxe", "cache_poison", "http_smuggling", "open_redirect",
+    "host_header", "twofa_bypass", "cve_exploit", "js_secrets",
+    "subdomain_takeover", "git_config_exposure",
+]
+
+for vuln_class in VULN_CLASSES:
+    if state.is_class_tested(vuln_class):
+        continue  # Already tested in a previous session
+    
+    state.start_class(vuln_class)
+    # Run the appropriate tool(s) for this vuln class
+    # ...tool execution...
+    # If finding: validate with 7-Q Gate, record if passed
+    # If no finding: mark as tested, move to NEXT class
+    state.complete_class(vuln_class, result="tested" | "finding" | "n/a")
 
 # Phase 4.5: AUTO-VALIDATION GATE (Sonnet/medium) — MANDATORY
 # Every potential finding MUST pass before becoming a real finding

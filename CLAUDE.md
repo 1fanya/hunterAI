@@ -216,6 +216,7 @@ Exploit: msfconsole, searchsploit
 8. **5-MINUTE RULE** per endpoint — rotate if nothing
 9. **SAVE STATE** after every tool — user may close anytime, `/resume` must work
 10. **DON'T WASTE TOKENS** on recon parsing — save them for hunting and validation
+11. **NEVER STOP EARLY** — finding 1-2 bugs does NOT mean the hunt is done. CHECK EVERY VULN CLASS before finishing. Use the completeness checklist below.
 
 ### Report Quality (auto-enforced)
 
@@ -227,13 +228,51 @@ Exploit: msfconsole, searchsploit
 16. **CVSS 3.1 WITH VECTOR** — don't overclaim, don't underclaim
 17. **SEPARATE BUGS = SEPARATE REPORTS** — independent bugs → separate payouts
 
+### Exhaustive Hunting — Completeness Checklist
+
+> **MANDATORY: Every `/fullhunt` MUST test ALL of these before generating a final report.**
+> **Finding bugs early does NOT mean you stop. Keep going until every box is checked.**
+
+```
+[ ] 1.  IDOR / BOLA              — test all ID params with 2nd account
+[ ] 2.  Auth bypass               — direct URL access, role escalation
+[ ] 3.  Business logic            — price manipulation, flow skip, negative values
+[ ] 4.  Race conditions           — parallel requests on critical actions
+[ ] 5.  OAuth/SSO flaws           — state, redirect_uri, token leakage
+[ ] 6.  SSRF                      — URL params, webhook inputs, file imports
+[ ] 7.  SQL injection             — all user inputs, headers, cookies
+[ ] 8.  XSS (stored/reflected)    — all input fields, URL params, file upload names
+[ ] 9.  SSTI                      — template expressions in user input
+[ ] 10. JWT attacks               — none/HS256, key confusion, expired tokens
+[ ] 11. API mass assignment       — extra params in POST/PUT bodies
+[ ] 12. GraphQL abuse             — introspection, batch queries, auth bypass
+[ ] 13. File upload               — extension bypass, content-type, web shells
+[ ] 14. Path traversal / LFI      — file read params, download endpoints
+[ ] 15. XXE                       — XML upload, SOAP endpoints
+[ ] 16. Cache poisoning           — unkeyed headers, host override
+[ ] 17. HTTP smuggling            — CL.TE, TE.CL on load balancers
+[ ] 18. Open redirect             — login redirects, OAuth, link params
+[ ] 19. Host header attacks       — password reset poisoning, routing
+[ ] 20. 2FA bypass                — direct access, rate limit, response tamper
+[ ] 21. CVE exploitation          — version fingerprint → cve_engine → exploit
+[ ] 22. JS secrets/source maps    — js_analyzer + js_deps_scanner
+[ ] 23. Subdomain takeover        — dangling CNAMEs
+[ ] 24. Git/config exposure       — .git, .env, debug endpoints
+```
+
+**After EVERY finding, mark it and KEEP GOING to the next unchecked class.**
+**Only generate the final report when ALL 24 classes have been tested or confirmed N/A.**
+
 ### Pipeline Flow
 
 ```
-HUNT → FIND potential vuln → AUTO-VALIDATE (7-Q Gate) → PASS? → REPORT
-                                                      → KILL? → move on
+HUNT → test vuln class → FIND? → validate (7-Q Gate) → PASS? → record finding
+                                                      → KILL? → log + move on
+     → no find? → mark class as tested → NEXT CLASS
+     → ALL 24 classes tested? → GENERATE FINAL REPORT
 ```
 
+**Never stop after 1-2 bugs. Test everything. More bugs = more bounties.**
 **Never generate a report for a finding that hasn't passed validation.**
 
 ## Install on Kali Linux
