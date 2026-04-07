@@ -156,14 +156,41 @@ Takeover: subzy
 OOB: interactsh-client
 Wordlists: SecLists, GF patterns, nuclei templates
 
-## Critical Rules
+## Critical Rules (Always Active — from `rules/`)
+
+> **See `rules/hunting.md` and `rules/reporting.md` for full details.**
+
+### Non-Negotiable (auto-enforced during every hunt)
 
 1. **READ FULL SCOPE** before touching any asset
-2. **EXPLOIT, DON'T JUST FIND** — prove it or kill it
-3. **5 MINUTES MAX** per endpoint — rotate if nothing
-4. **SAVE STATE** after every tool — user may close anytime and `/resume` later
-5. **VALIDATE BEFORE WRITING** — 7-Question Gate saves hours
-6. **DON'T WASTE TOKENS** on recon output parsing — save them for hunting
+2. **NO THEORETICAL BUGS** — "Can attacker do this RIGHT NOW?" If no → KILL
+3. **VERIFY ENDPOINT IS REACHABLE** before recording any finding
+4. **PROVE IMPACT WITH DATA** — not just status codes (see proof table in rules/hunting.md)
+5. **AUTO-VALIDATE EVERY FINDING** — run 7-Question Gate before spending tokens on reports
+6. **CHECK NEVER-SUBMIT LIST** — standalone header/introspection/self-XSS/redirect = auto-KILL
+7. **TWO ACCOUNTS FOR IDOR** — attacker sees victim's data (not self-testing)
+8. **5-MINUTE RULE** per endpoint — rotate if nothing
+9. **SAVE STATE** after every tool — user may close anytime, `/resume` must work
+10. **DON'T WASTE TOKENS** on recon parsing — save them for hunting and validation
+
+### Report Quality (auto-enforced)
+
+11. **NEVER say "could potentially"** — concrete statements only
+12. **TITLE FORMULA**: `[Bug Class] in [Endpoint] allows [actor] to [impact]`
+13. **COPY-PASTEABLE PoC** — curl command that reproduces the bug
+14. **ACTUAL RESPONSE DATA** — not just "200 OK"
+15. **UNDER 600 WORDS** — triagers skim
+16. **CVSS 3.1 WITH VECTOR** — don't overclaim, don't underclaim
+17. **SEPARATE BUGS = SEPARATE REPORTS** — independent bugs → separate payouts
+
+### Pipeline Flow
+
+```
+HUNT → FIND potential vuln → AUTO-VALIDATE (7-Q Gate) → PASS? → REPORT
+                                                      → KILL? → move on
+```
+
+**Never generate a report for a finding that hasn't passed validation.**
 
 ## Install on Kali Linux
 

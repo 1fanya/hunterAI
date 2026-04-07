@@ -131,16 +131,56 @@ if not state.is_tool_completed("subdomain_takeover"):
 
 # Phase 4: Active Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
 # Run tools from priority table, skip completed ones
-# After each finding: state.add_finding({...})
+# After each potential finding: run auto-validation IMMEDIATELY
 # After each tool: state.complete_tool(name)
 
-# Phase 5: Report (Sonnet/high)
+# Phase 4.5: AUTO-VALIDATION GATE (Sonnet/medium) — MANDATORY
+# Every potential finding MUST pass before becoming a real finding
+for finding in potential_findings:
+    # Step 1: Reachability check — is the endpoint alive?
+    if not verify_endpoint_reachable(finding["url"]):
+        state.log_killed(finding, "endpoint_unreachable")
+        continue
+
+    # Step 2: Never-submit filter
+    if finding["vuln_class"] in NEVER_SUBMIT_LIST and not finding.get("chain"):
+        state.log_killed(finding, "never_submit_standalone")
+        continue
+
+    # Step 3: 7-Question Gate (see rules/reporting.md)
+    validation = run_7question_gate(finding)
+    if validation == "KILL":
+        state.log_killed(finding, validation.reason)
+        continue
+
+    # Step 4: Proof requirements check per vuln class
+    proof = check_proof_requirements(finding)
+    if not proof["has_required_evidence"]:
+        # Try to gather missing evidence automatically
+        proof = gather_additional_evidence(finding.url, finding.vuln_class)
+        if not proof["has_required_evidence"]:
+            state.log_killed(finding, "insufficient_proof")
+            continue
+
+    # Step 5: Dedup check against Hacktivity
+    if is_likely_duplicate(finding):
+        state.log_killed(finding, "likely_duplicate")
+        continue
+
+    # PASSED ALL GATES — this is a real finding
+    state.add_finding(finding)
+
+# Phase 5: Report (Sonnet/high) — ONLY for validated findings
 if not state.is_tool_completed("generate_report"):
-    from report_finalizer import ReportFinalizer
-    report = ReportFinalizer(DOMAIN)
-    report.generate()
-    report.save()
-    state.complete_tool("generate_report", had_findings=True)
+    findings = state.get_findings()
+    if findings:
+        from report_finalizer import ReportFinalizer
+        report = ReportFinalizer(DOMAIN)
+        report.generate()  # Uses rules/reporting.md template
+        report.save()
+        state.complete_tool("generate_report", had_findings=True)
+    else:
+        state.complete_tool("generate_report", had_findings=False)
 
 state.set_phase("done")
 state.save()

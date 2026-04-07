@@ -1,133 +1,86 @@
 ---
-description: Validate a finding — runs 7-Question Gate + 4-gate checklist. Kills weak findings before report writing. Prevents N/A submissions that hurt validity ratio. Usage: /validate
+description: "Auto-validate a finding before report. Runs 7-Question Gate + 4-gate checklist. Kills weak findings before wasting tokens on reports. Usage: /validate (runs automatically inside /fullhunt)"
 ---
 
-# /validate
+# /validate — Auto-Validation Gate
 
-Run full validation on the current finding before writing a report.
+Runs AUTOMATICALLY inside `/fullhunt` after every finding, before report generation.
+Can also run standalone: type `/validate` and describe the finding.
 
-## What This Does
+## What This Does (Autonomously)
 
-1. Runs 7-Question Gate (one wrong answer = kill it)
-2. Checks against the always-rejected list
+1. Runs 7-Question Gate (ONE fail = KILL finding)
+2. Checks against never-submit list (auto-reject)
 3. Runs 4 pre-submission gates
-4. Outputs: PASS (write the report) or KILL (move on)
+4. Checks proof requirements for the specific vuln class
+5. Output: **PASS** (generate report) or **KILL** (move on silently)
 
-## Usage
-
-```
-/validate
-```
-
-Describe the finding when prompted. Include:
-- The endpoint
-- The bug class
-- What the PoC shows
-- The target program
-
-## The 7-Question Gate
-
-Answer each. ONE wrong answer = STOP.
+## 7-Question Gate (ALL must pass)
 
 ### Q1: Can I demonstrate this step-by-step RIGHT NOW?
-
-Write this out:
+Write out internally:
 ```
-1. Setup:   I need [own account / another user's ID / no account]
-2. Request: [exact HTTP method, URL, headers, body]
-3. Result:  Response shows [exact data / action completed]
-4. Impact:  Real consequence is [account takeover / PII exposed / money stolen]
-5. Cost:    Time: [X min], Capital: [$0 / $X]
+1. Setup:   [account type needed]
+2. Request: [exact HTTP request]
+3. Result:  [exact response data]
+4. Impact:  [real consequence]
 ```
-
-If step 2 is "I need to look at the code more" → KILL IT.
+If request returns timeout/5xx/error → KILL.
+If result is just a status code without data → KILL.
 
 ### Q2: Is the impact accepted by this program?
-
-Check program scope page. Is your bug class listed? Is it excluded?
+Cross-check program scope. Auto-KILL if bug class is excluded.
 
 ### Q3: Is the vulnerable asset in scope?
+Verify exact domain is listed. Third-party services = out of scope.
 
-Exact domain in scope? Not staging/dev? Not a third-party service?
+### Q4: Does it need privileged access an attacker can't get?
+"Admin can do X" → KILL.
 
-### Q4: Does it need admin or privileged access that an attacker can't get?
+### Q5: Is this known/documented behavior?
+Check Hacktivity, changelogs. If documented → KILL.
 
-"Admin can do X" → KILL IT.
-"Regular user can do X that only admin should" → valid.
-
-### Q5: Is this known or documented behavior?
-
-Search disclosed reports + changelog + API docs.
-
-### Q6: Can you prove impact beyond "technically possible"?
-
-- XSS → actual cookie value in exfil request, not just alert()
-- SSRF → response body from internal service, not just DNS callback
-- IDOR → actual other-user's private data in response, not just 200 status
+### Q6: Can I prove impact beyond "technically possible"?
+Must have actual data/action proof per vuln class:
+- **IDOR**: victim's private data in attacker's response
+- **XSS**: cookie exfiltration or DOM write
+- **SSRF**: internal service response body
+- **OAuth**: silent redirect with code (no consent screen)
+- **JWT**: forged token accepted by server
+- **SQLi**: database content extracted
+- **XXE**: file read or OOB data exfil
+- **Open redirect**: chained to OAuth/token theft
 
 ### Q7: Is this on the never-submit list?
+Auto-reject from `rules/hunting.md` list unless chain proven.
+
+## 4 Gates (all auto-checked)
+
+**Gate 0:** Real HTTP request made? In scope? Reproducible? Evidence saved?
+**Gate 1:** Attacker gains what? Real victim? No unlikely preconditions?
+**Gate 2:** Not duplicate in Hacktivity? Not documented behavior?
+**Gate 3:** Title formula? HTTP request in steps? Evidence shows data? CVSS?
+
+## Decision Output
 
 ```
-Missing headers, GraphQL introspection alone, clickjacking without PoC,
-self-XSS, open redirect alone, SSRF DNS-only, logout CSRF, banner disclosure,
-rate limit on non-critical forms, missing cookie flags alone...
+PASS → proceed to report generation
+KILL → discard finding, log reason, move to next endpoint
+DOWNGRADE → adjust severity, proceed to report
 ```
 
-If yes → KILL IT unless you have a chain.
+## Integration in /fullhunt Pipeline
 
-## Check: Conditionally Valid?
-
-If it's on the never-submit list, can you chain it?
-
-| You Have | Chain Available? |
-|---|---|
-| Open redirect | + OAuth code theft → ATO? |
-| SSRF DNS-only | + internal service data? |
-| Clickjacking | + sensitive action + PoC? |
-| CORS wildcard | + credentialed data exfil? |
-| Prompt injection | + IDOR → other user's data? |
-
-If no chain → KILL IT. If chain confirmed → report both together.
-
-## 4 Gates — All Must Pass
-
-**Gate 0 (30 sec):**
+```python
+# After finding a potential vulnerability:
+for finding in potential_findings:
+    validation = auto_validate(finding)
+    if validation == "KILL":
+        state.log_killed(finding, reason)
+        continue  # Move on — don't waste tokens
+    if validation == "DOWNGRADE":
+        finding["severity"] = downgraded_severity
+    # Only reaches here if PASS or DOWNGRADE
+    state.add_finding(finding)
+    generate_report(finding)
 ```
-[ ] Confirmed with real HTTP requests (not just code reading)
-[ ] In scope (checked program page)
-[ ] Reproducible from scratch
-[ ] Evidence captured
-```
-
-**Gate 1 — Impact (2 min):**
-```
-[ ] Can answer "What does attacker walk away with?"
-[ ] More than "sees non-sensitive data"
-[ ] Real victim exists
-[ ] No unlikely preconditions
-```
-
-**Gate 2 — Dedup (5 min):**
-```
-[ ] Searched HackerOne Hacktivity for endpoint + bug class
-[ ] Searched GitHub issues
-[ ] Read 5 most recent disclosed reports
-[ ] Not in changelog as known issue
-```
-
-**Gate 3 — Report quality (10 min):**
-```
-[ ] Title formula: [Class] in [Endpoint] allows [actor] to [impact]
-[ ] Steps have exact HTTP request
-[ ] Evidence shows actual impact
-[ ] CVSS calculated
-[ ] Fix: 1-2 concrete sentences
-```
-
-## Output
-
-**PASS:** "All 7 questions pass. All 4 gates pass. Proceed to /report."
-
-**KILL:** "Q[N] fails because [reason]. Kill this finding. Reason: [explanation]. Move on."
-
-**DOWNGRADE:** "Q6 only shows technical possibility. Downgrade from High to Medium. Requires showing actual data exfil in PoC."
