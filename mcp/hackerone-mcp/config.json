@@ -2,9 +2,14 @@
   "mcpServers": {
     "hackerone": {
       "command": "python3",
-      "args": ["mcp/hackerone-mcp/server.py"],
-      "env": {}
+      "args": [
+        "mcp/hackerone-mcp/server.py"
+      ],
+      "env": {
+        "H1_API_USERNAME": "${H1_API_USERNAME}",
+        "H1_API_TOKEN": "${H1_API_TOKEN}"
+      }
     }
   },
-  "_comment": "Public endpoints only — no API key required. Copy into .claude/settings.json mcpServers section."
+  "_comment": "Copy the 'hackerone' entry into ~/.claude.json mcpServers. Public tools work without auth. Set H1_API_USERNAME + H1_API_TOKEN for authenticated tools."
 }

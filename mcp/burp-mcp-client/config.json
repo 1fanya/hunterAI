@@ -1,13 +1,15 @@
 {
   "mcpServers": {
     "burp": {
-      "command": "java",
-      "args": ["-jar", "burp-mcp-server.jar"],
+      "command": "python3",
+      "args": [
+        "mcp/burp-mcp-client/server.py"
+      ],
       "env": {
-        "BURP_API_URL": "http://localhost:1337",
+        "BURP_API_URL": "http://127.0.0.1:1337",
         "BURP_API_KEY": "${BURP_API_KEY}"
       }
     }
   },
-  "_comment": "Copy this into your .claude/settings.json mcpServers section. Set BURP_API_KEY in your environment."
+  "_comment": "Copy the 'burp' entry into ~/.claude.json mcpServers. Requires Burp Suite running with --rest-api flag."
 }
