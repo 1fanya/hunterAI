@@ -98,11 +98,20 @@ Claude doesn't just run tools — it **thinks** about what each endpoint does an
 
 ## Architecture
 
-### 23 Python Tools
-Custom-built exploitation tools in `tools/` — each handles a specific vulnerability class with rate limiting, scope checking, and structured output.
+### 70+ Python Tools
+Custom-built exploitation tools in `tools/` — each handles a specific vulnerability class with rate limiting, scope checking, and structured output. Includes CVE engine (NVD + CISA KEV + ExploitDB + Metasploit), WAF bypass payload mutator, Playwright browser automation, GitHub dorking, Shodan recon, Wayback Machine analysis, and more.
 
-### 37+ External Tools
-ProjectDiscovery suite (subfinder, httpx, katana, nuclei), ffuf, sqlmap, dalfox, commix, xsstrike, arjun, and more. All installed by `install_tools.sh`.
+### 15+ External CLI Tools
+ProjectDiscovery suite (subfinder, httpx, katana, nuclei), ffuf, sqlmap, dalfox, commix, xsstrike, arjun, nmap, msfconsole, searchsploit, and more. All installed by `setup_hunter.sh`.
+
+### 24-Class Exhaustive Hunting
+Every `/fullhunt` must test ALL 24 vulnerability classes (IDOR, auth bypass, business logic, race conditions, SSRF, SQLi, XSS, etc.) before generating a final report. No early stopping.
+
+### CVE/Exploit Engine
+Automatic version detection → NVD API → CISA KEV → ExploitDB → Metasploit module matching. Known vulnerable versions get auto-exploited.
+
+### Real-Time Alerts
+Telegram bot pushes findings, CVE matches, and hunt status to your phone instantly.
 
 ### OWASP Top 10 Knowledge
 `rules/owasp_top10.md` — deep testing knowledge for every OWASP category with specific payloads, curl commands, and mental models for finding bugs tools can't detect.
@@ -129,6 +138,7 @@ State saved after **every single tool call**. If limits hit mid-hunt, `/resume` 
 | `/validate` | 7-Question Gate on findings |
 | `/report` | Generate HackerOne-ready report |
 | `/compare` | Check finding against Hacktivity (dedup) |
+| `/methodology` | 7-phase professional hunting methodology |
 | `/monitor <domain>` | Background recon for new attack surface |
 
 ---
@@ -155,7 +165,7 @@ Session 3:  /resume rockstargames
 - **Kali Linux** (terminal only, no GUI needed)
 - **Claude Code** with Pro subscription
 - **Python 3.8+** and **Go 1.21+** (for ProjectDiscovery tools)
-- **API Keys:** `H1_API_TOKEN` (HackerOne), `GITHUB_TOKEN` (optional)
+- **API Keys:** `H1_API_TOKEN` (HackerOne), `GITHUB_TOKEN` (optional), `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` (optional)
 
 ---
 
