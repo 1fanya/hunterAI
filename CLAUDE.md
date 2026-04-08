@@ -327,20 +327,34 @@ playwright install chromium
 ### Environment Variables (add to `.env`)
 
 ```bash
-# Required
-H1_API_TOKEN="your-token"               # HackerOne API
+# ─── HackerOne (Required for report submission) ────────────────────────────
+H1_API_TOKEN="your-h1-api-token"         # Settings > API Token
+H1_API_USERNAME="your-h1-username"       # H1 username (for MCP auth)
 
-# Recommended
-TELEGRAM_BOT_TOKEN="bot123:ABC..."      # Telegram alerts
-TELEGRAM_CHAT_ID="123456789"            # Your chat ID
-GITHUB_TOKEN="ghp_xxx"                  # GitHub dorking
-INTERACTSH_URL="xxx.oast.fun"           # Blind SSRF/XSS callbacks
+# ─── Notifications (Recommended) ───────────────────────────────────────────
+TELEGRAM_BOT_TOKEN="bot123:ABC..."       # @BotFather token
+TELEGRAM_CHAT_ID="123456789"             # Your chat ID (@userinfobot)
 
-# Optional
-SHODAN_API_KEY="xxx"                    # Full Shodan (InternetDB works without)
-NVD_API_KEY="xxx"                       # 10x NVD rate limit (free)
-HUNT_USERNAME="test@target.com"         # Auth testing
-HUNT_PASSWORD="password123"             # Auth testing
+# ─── Recon & OSINT (Recommended) ───────────────────────────────────────────
+GITHUB_TOKEN="ghp_xxxxxxxxxxxx"          # GitHub > Settings > Developer > PAT
+SHODAN_API_KEY="xxxxxxxxxxxxx"           # shodan.io/dashboard (InternetDB works without)
+NVD_API_KEY="xxxxxxxx-xxxx-xxxx"         # nvd.nist.gov/developers (free, 10x rate limit)
+
+# ─── Blind Callbacks (Recommended) ─────────────────────────────────────────
+INTERACTSH_URL="xxx.oast.fun"            # interactsh-client or Burp Collaborator URL
+
+# ─── Burp Suite MCP (Optional) ─────────────────────────────────────────────
+BURP_API_URL="http://127.0.0.1:1337"     # Burp REST API URL (default)
+BURP_API_KEY=""                          # Burp REST API key (if set)
+
+# ─── Auth Testing (Optional — per-target) ──────────────────────────────────
+HUNT_AUTH_TOKEN=""                        # Bearer token for authenticated testing
+HUNT_COOKIES=""                           # Session cookies for auth testing
+
+# ─── Zendesk Testing (Optional — per-target) ──────────────────────────────
+ZENDESK_SUBDOMAIN=""                     # target.zendesk.com subdomain
+ZENDESK_EMAIL=""                         # Zendesk agent email
+ZENDESK_API_TOKEN=""                     # Zendesk API token
 ```
 
 ### Load env and start
