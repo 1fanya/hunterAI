@@ -105,7 +105,7 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | **report-writer** | HackerOne reports | Sonnet |
 | **web3-auditor** | Smart contracts | Sonnet |
 
-## Active Exploitation Tools (34+ tools in `tools/`)
+## Active Exploitation Tools (70+ tools in `tools/`)
 
 ### Core Exploitation
 | Tool | Attack | Priority |
@@ -229,13 +229,13 @@ Exploit: msfconsole, searchsploit
 
 ### Report Quality (auto-enforced)
 
-11. **NEVER say "could potentially"** — concrete statements only
-12. **TITLE FORMULA**: `[Bug Class] in [Endpoint] allows [actor] to [impact]`
-13. **COPY-PASTEABLE PoC** — curl command that reproduces the bug
-14. **ACTUAL RESPONSE DATA** — not just "200 OK"
-15. **UNDER 600 WORDS** — triagers skim
-16. **CVSS 3.1 WITH VECTOR** — don't overclaim, don't underclaim
-17. **SEPARATE BUGS = SEPARATE REPORTS** — independent bugs → separate payouts
+12. **NEVER say "could potentially"** — concrete statements only
+13. **TITLE FORMULA**: `[Bug Class] in [Endpoint] allows [actor] to [impact]`
+14. **COPY-PASTEABLE PoC** — curl command that reproduces the bug
+15. **ACTUAL RESPONSE DATA** — not just "200 OK"
+16. **UNDER 600 WORDS** — triagers skim
+17. **CVSS 3.1 WITH VECTOR** — don't overclaim, don't underclaim
+18. **SEPARATE BUGS = SEPARATE REPORTS** — independent bugs → separate payouts
 
 ### Exhaustive Hunting — Completeness Checklist
 
@@ -290,14 +290,32 @@ HUNT → test vuln class → FIND? → validate (7-Q Gate) → PASS? → record 
 git clone <repo>
 cd hunterAI
 chmod +x setup_hunter.sh && ./setup_hunter.sh
+pip install --break-system-packages playwright nvdlib requests aiohttp
+playwright install chromium
+```
 
-# Set env vars
-export H1_API_TOKEN="your-token"
-export GITHUB_TOKEN="your-token"          # optional
-export HUNT_USERNAME="test@target.com"    # optional, for auth
-export HUNT_PASSWORD="password123"         # optional
-export INTERACTSH_URL="xxx.oast.fun"      # for blind SSRF/XSS
+### Environment Variables (add to `.env`)
 
-# Start hunting
-/fullhunt target.com
+```bash
+# Required
+H1_API_TOKEN="your-token"               # HackerOne API
+
+# Recommended
+TELEGRAM_BOT_TOKEN="bot123:ABC..."      # Telegram alerts
+TELEGRAM_CHAT_ID="123456789"            # Your chat ID
+GITHUB_TOKEN="ghp_xxx"                  # GitHub dorking
+INTERACTSH_URL="xxx.oast.fun"           # Blind SSRF/XSS callbacks
+
+# Optional
+SHODAN_API_KEY="xxx"                    # Full Shodan (InternetDB works without)
+NVD_API_KEY="xxx"                       # 10x NVD rate limit (free)
+HUNT_USERNAME="test@target.com"         # Auth testing
+HUNT_PASSWORD="password123"             # Auth testing
+```
+
+### Load env and start
+```bash
+export $(grep -v '^#' .env | xargs)
+python3 tools/smoke_test.py             # Verify everything works
+/fullhunt target.com                    # Start hunting
 ```
