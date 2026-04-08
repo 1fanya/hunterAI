@@ -105,6 +105,36 @@ When user reopens Claude Code and types `/fullhunt target.com` or `/resume targe
 | **report-writer** | HackerOne reports | Sonnet |
 | **web3-auditor** | Smart contracts | Sonnet |
 
+## MCP Integrations (in `mcp/`)
+
+### HackerOne MCP (`mcp/hackerone-mcp/server.py`)
+| Tool | Auth | Purpose |
+|---|---|---|
+| `search_disclosed_reports` | No | Search Hacktivity for dupes/intel |
+| `get_program_stats` | No | Bounty ranges, response times |
+| `get_program_policy` | No | Scope, rules, safe harbor |
+| `get_my_reports` | Yes | List your submitted reports + status |
+| `add_report_comment` | Yes | Comment on a report |
+| `close_report` | Yes | Self-close a report |
+| `get_program_scope_auth` | Yes | Detailed authenticated scope |
+
+### Burp Suite MCP (`mcp/burp-mcp-client/server.py`)
+| Tool | Purpose |
+|---|---|
+| `get_proxy_history` | Fetch intercepted requests/responses |
+| `search_proxy` | Search history by URL/method/status |
+| `get_sitemap` | Discovered URLs from Burp sitemap |
+| `send_to_repeater` | Send crafted request to Repeater |
+| `start_active_scan` | Launch active scan on a URL |
+| `get_scan_status` | Scan findings and progress |
+| `get_issue_definitions` | Burp issue type reference |
+
+### Setup
+```bash
+chmod +x mcp/setup_mcp.sh && ./mcp/setup_mcp.sh
+# Or manually: claude mcp add hackerone -- python3 mcp/hackerone-mcp/server.py
+```
+
 ## Active Exploitation Tools (70+ tools in `tools/`)
 
 ### Core Exploitation
