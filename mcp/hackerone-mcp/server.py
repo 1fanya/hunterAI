@@ -184,9 +184,9 @@ def get_program_stats(program):
     safe_prog = program.replace('"', '\\"')
     query = f"""{{
       team(handle: "{safe_prog}") {{
-        name handle url offers_bounties default_currency base_bounty
-        resolved_report_count average_time_to_bounty_awarded
-        average_time_to_first_program_response launched_at state
+        name handle url offers_bounties base_bounty
+        resolved_report_count average_bounty_lower_amount average_bounty_upper_amount
+        launched_at state
       }}
     }}"""
 
@@ -203,11 +203,10 @@ def get_program_stats(program):
         "name": team.get("name", ""),
         "url": team.get("url", ""),
         "offers_bounties": team.get("offers_bounties", False),
-        "currency": team.get("default_currency", "USD"),
         "base_bounty": team.get("base_bounty"),
+        "avg_bounty_lower": team.get("average_bounty_lower_amount"),
+        "avg_bounty_upper": team.get("average_bounty_upper_amount"),
         "resolved_reports": team.get("resolved_report_count"),
-        "avg_days_to_bounty": team.get("average_time_to_bounty_awarded"),
-        "avg_days_to_first_response": team.get("average_time_to_first_program_response"),
         "launched_at": (team.get("launched_at") or "")[:10],
         "state": team.get("state", ""),
     }
