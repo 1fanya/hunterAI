@@ -91,6 +91,46 @@ TOOLS = [
     ("wayback_analyzer", "WaybackAnalyzer", ["analyze", "find_removed_endpoints"]),
     ("auto_scope", "AutoScope", ["load", "list_configs"]),
     ("recon_cron", "ReconCron", ["run_once", "check_subdomains"]),
+
+    # Rest of 38 tools added
+    ("auth_manager", "AuthManager", ['detect_login_form', 'login', 'get_auth_headers']),
+    ("auth_tester", "AuthTester", ['test_idor', 'test_no_auth', 'test_method_swap']),
+    ("cloud_enum", "CloudEnumerator", ['check_s3', 'check_azure', 'check_gcp']),
+    ("cors_tester", "CORSTester", ['test_all', 'save_findings', 'print_summary']),
+    ("cve_hunter", "", ['run_cmd', 'detect_technologies', 'search_cves']),
+    ("exploit_verifier", "ExploitVerifier", ['verify_idor', 'verify_ssrf', 'verify_race_condition']),
+    ("git_dorker", "GitDorker", ['check_git_exposure', 'check_sensitive_files', 'github_search']),
+    ("graphql_exploiter", "GraphQLExploiter", ['test_introspection', 'test_node_idor', 'test_mutation_auth']),
+    ("h1_collector", "H1Collector", ['collect_all', 'print_report', 'save']),
+    ("h1_idor_scanner", "", ['make_gid', 'check', 'print_summary']),
+    ("h1_mutation_idor", "", ['make_ctx', 'get_csrf', 'check']),
+    ("h1_oauth_tester", "", ['request', 'check_cors', 'check_password_reset_host_header']),
+    ("h1_race", "", ['gql_raw', 'rest_raw', 'test_2fa_rate_limit']),
+    ("hai_payload_builder", "", ['sneaky_encode', 'build_report', 'print_payloads', 'export_payloads']),
+    ("hai_probe", "HaiProbe", ['chat', 'list_reports', 'get_report']),
+    ("hunt", "", ['run_recon', 'run_vuln_scan', 'run_cve_hunt', 'hunt_target']),
+    ("intel_engine", "", ['load_memory_context', 'fetch_all_intel', 'prioritize_intel']),
+    ("jwt_tester", "JWTTester", ['analyze_token', 'test_none_algorithm', 'test_algorithm_confusion']),
+    ("learn", "", ['fetch_url', 'fetch_nvd_cves', 'fetch_intel']),
+    ("mindmap", "", ['build_mermaid', 'build_checklist']),
+    ("model_router", "ModelRouter", ['get_model', 'get_model_name', 'get_effort']),
+    ("monitor_agent", "TargetMonitor", ['scan_subdomains', 'scan_urls', 'check_crt_transparency']),
+    ("pattern_learner", "", ['load_patterns', 'save_patterns', 'learn_from_finding']),
+    ("recon_adapter", "", ['normalize', 'get_recon_data']),
+    ("report_comparer", "", ['fetch_hacktivity', 'calculate_similarity', 'compare_finding']),
+    ("report_finalizer", "ReportFinalizer", ['collect_findings', 'deduplicate', 'severity_summary']),
+    ("report_generator", "", ['parse_nuclei_line', 'generate_report', 'create_manual_report']),
+    ("rockstar_oauth_poc", "", ['step1_oidc_recon', 'step2_test_no_state', 'step3_test_prompt_none']),
+    ("safe_http", "SafeHTTP", ['is_in_scope', 'get', 'post']),
+    ("scope_checker", "ScopeChecker", ['is_in_scope', 'is_vuln_class_allowed', 'filter_urls']),
+    ("scope_importer", "", ['fetch_hackerone_scope', 'save_scope', 'generate_scope_checker_config']),
+    ("smuggling_tester", "SmugglingTester", ['test_all', 'save_findings', 'print_summary']),
+    ("sneaky_bits", "", ['sneaky_encode', 'variant_encode', 'generate_injection_payloads']),
+    ("target_selector", "", ['fetch_programs', 'extract_scope_domains', 'select_targets']),
+    ("tech_profiler", "", ['http_get', 'profile_target', 'save_profile']),
+    ("validate", "", ['calculate_cvss', 'check_h1_dups', 'generate_report_skeleton']),
+    ("zendesk_idor_test", "", ['test_ticket_idor', 'test_user_idor', 'test_org_idor']),
+    ("zero_day_fuzzer", "ZeroDayFuzzer", ['add_finding', 'test_http_method_tampering', 'test_host_header_injection']),
 ]
 
 # ── Dependency checks ────────────────────────────────────────────────────
@@ -130,61 +170,74 @@ def check_tools():
     failed = 0
     warnings = 0
 
+    # Inject dummy env vars so modules don't trigger sys.exit() on import
+    os.environ.setdefault("ZENDESK_SUBDOMAIN", "test")
+    os.environ.setdefault("ZENDESK_EMAIL", "test@test.com")
+    os.environ.setdefault("ZENDESK_API_TOKEN", "test_token")
+    os.environ.setdefault("H1_API_TOKEN", "test_token")
+    os.environ.setdefault("H1_API_USERNAME", "test_user")
+
     for module_name, class_name, methods in TOOLS:
         try:
             mod = importlib.import_module(module_name)
-            cls = getattr(mod, class_name)
-
-            # Try to instantiate (some need args)
-            try:
-                if class_name in ("ScopeGuard",):
-                    obj = cls(program_name="test.com")
-                elif class_name in ("WordlistBuilder",):
-                    obj = cls(target="test.com")
-                elif class_name in ("NucleiGenerator",):
-                    obj = cls(target="test.com")
-                elif class_name in ("SessionManager",):
-                    obj = cls(target="test.com")
-                elif class_name in ("JSAnalyzer",):
-                    obj = cls(base_url="https://test.com")
-                elif class_name in ("ChainEngine",):
-                    obj = cls(domain="test.com")
-                elif class_name in ("APISecurityTester",):
-                    obj = cls(target_base="https://test.com")
-                elif class_name in ("GraphQLDeepTester",):
-                    obj = cls(target_url="https://test.com/graphql")
-                elif class_name in ("AttackSurfaceMonitor",):
-                    obj = cls(domain="test.com", data_dir="/tmp/test_monitor")
-                elif class_name in ("GitRecon",):
-                    obj = cls(token="")
-                elif class_name in ("HostHeaderAttack", "OAuthTester"):
-                    obj = cls("https://test.com")
-                elif class_name in ("BusinessLogicTester",):
-                    obj = cls("https://test.com")
-                elif class_name in ("HuntState",):
-                    obj = cls("test.com")
-                else:
-                    obj = cls()
+            
+            if class_name:
+                cls = getattr(mod, class_name)
+                target_for_methods = cls
+                # Try to instantiate (some need args)
+                try:
+                    if class_name in ("ScopeGuard",):
+                        obj = cls(program_name="test.com")
+                    elif class_name in ("WordlistBuilder",):
+                        obj = cls(target="test.com")
+                    elif class_name in ("NucleiGenerator",):
+                        obj = cls(target="test.com")
+                    elif class_name in ("SessionManager",):
+                        obj = cls(target="test.com")
+                    elif class_name in ("JSAnalyzer",):
+                        obj = cls(base_url="https://test.com")
+                    elif class_name in ("ChainEngine",):
+                        obj = cls(domain="test.com")
+                    elif class_name in ("APISecurityTester",):
+                        obj = cls(target_base="https://test.com")
+                    elif class_name in ("GraphQLDeepTester",):
+                        obj = cls(target_url="https://test.com/graphql")
+                    elif class_name in ("AttackSurfaceMonitor",):
+                        obj = cls(domain="test.com", data_dir="/tmp/test_monitor")
+                    elif class_name in ("GitRecon",):
+                        obj = cls(token="")
+                    elif class_name in ("HostHeaderAttack", "OAuthTester"):
+                        obj = cls("https://test.com")
+                    elif class_name in ("BusinessLogicTester",):
+                        obj = cls("https://test.com")
+                    elif class_name in ("HuntState",):
+                        obj = cls("test.com")
+                    else:
+                        obj = cls()
+                    instantiated = True
+                except Exception as e:
+                    instantiated = False
+                    warnings += 1
+            else:
+                target_for_methods = mod
                 instantiated = True
-            except Exception as e:
-                instantiated = False
-                warnings += 1
 
             # Check methods exist
             missing_methods = []
             for method in methods:
-                if not hasattr(cls, method):
+                if not hasattr(target_for_methods, method):
                     missing_methods.append(method)
 
+            display_name = class_name if class_name else "(module functions)"
             if missing_methods:
-                print(f"  {YELLOW}!{NC} {module_name:25s} → {class_name} "
+                print(f"  {YELLOW}!{NC} {module_name:25s} → {display_name} "
                       f"(missing: {', '.join(missing_methods)})")
                 warnings += 1
             elif not instantiated:
-                print(f"  {YELLOW}!{NC} {module_name:25s} → {class_name} "
+                print(f"  {YELLOW}!{NC} {module_name:25s} → {display_name} "
                       f"(import OK, instantiation failed)")
             else:
-                print(f"  {GREEN}✓{NC} {module_name:25s} → {class_name} "
+                print(f"  {GREEN}✓{NC} {module_name:25s} → {display_name} "
                       f"({len(methods)} methods verified)")
             passed += 1
 
@@ -245,7 +298,7 @@ def check_agent_tools_list():
             return 0, 1
 
         # Read file and extract tool names
-        with open(agent_path) as f:
+        with open(agent_path, encoding='utf-8') as f:
             content = f.read()
 
         import re
