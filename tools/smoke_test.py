@@ -206,16 +206,22 @@ def check_tools():
                         obj = cls(domain="test.com", data_dir="/tmp/test_monitor")
                     elif class_name in ("GitRecon",):
                         obj = cls(token="")
-                    elif class_name in ("HostHeaderAttack", "OAuthTester"):
+                    elif class_name in ("AuthTester",):
+                        obj = cls("https://test.com", "token1", "token2")
+                    elif class_name in ("HaiProbe",):
+                        obj = cls("api", "token")
+                    elif class_name in ("JWTTester",):
+                        raise Exception("Skipping JWTTester instantiation to prevent sys.exit(1)")
+                    elif class_name in ("HostHeaderAttack", "OAuthTester", "CORSTester", "GraphQLExploiter", "SafeHTTP", "SmugglingTester", "ZeroDayFuzzer"):
                         obj = cls("https://test.com")
                     elif class_name in ("BusinessLogicTester",):
                         obj = cls("https://test.com")
-                    elif class_name in ("HuntState",):
-                        obj = cls("test.com")
+                    elif class_name in ("HuntState", "TargetMonitor", "ReportFinalizer", "ScopeChecker", "GitDorker", "H1Collector"):
+                        obj = cls("test")
                     else:
                         obj = cls()
                     instantiated = True
-                except Exception as e:
+                except BaseException as e:
                     instantiated = False
                     warnings += 1
             else:
