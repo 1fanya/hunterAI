@@ -35,11 +35,29 @@ class HuntState:
         self.state_file = self.base_dir / f"{domain}_state.json"
         self.state = self._load_or_create()
 
+    # New fields added in v2 — must be present in all state dicts
+    _V2_DEFAULTS: dict = {
+        "observations": [],
+        "dead_ends": [],
+        "hypotheses": [],
+        "current_endpoint": "",
+        "tested_classes": [],
+    }
+
     def _load_or_create(self) -> dict:
-        """Load existing state or create fresh."""
+        """Load existing state or create fresh. Migrates v1 state files in-place."""
         if self.state_file.exists():
             try:
-                return json.loads(self.state_file.read_text())
+                state = json.loads(self.state_file.read_text())
+                # Migrate: add any missing v2 fields without touching existing data
+                migrated = False
+                for key, default in self._V2_DEFAULTS.items():
+                    if key not in state:
+                        state[key] = default
+                        migrated = True
+                if migrated:
+                    self.state_file.write_text(json.dumps(state, indent=2, default=str))
+                return state
             except Exception:
                 pass
 
@@ -100,6 +118,9 @@ class HuntState:
                 "wasted_tools": [],
                 "tech_correlations": {},
             },
+
+            # v2 persistence fields
+            **self._V2_DEFAULTS,
         }
 
     def save(self) -> None:
@@ -208,6 +229,59 @@ class HuntState:
             self.state["model_usage"][key] += 1
         self.save()
 
+    # ── Observations (auto-logged by PostToolUse hook, also callable manually) ──
+
+    def add_observation(self, cmd: str, result: str, endpoint: str = "") -> None:
+        """Append a tool observation. Keeps only the last 50 entries."""
+        obs = {
+            "ts": datetime.now().isoformat(),
+            "cmd": cmd[:150],
+            "result": result[:200],
+            "endpoint": endpoint or self.state.get("current_endpoint", ""),
+        }
+        self.state["observations"].append(obs)
+        # Rotate — keep last 50
+        if len(self.state["observations"]) > 50:
+            self.state["observations"] = self.state["observations"][-50:]
+        self.save()
+
+    # ── Dead ends ────────────────────────────────────────────────────────
+
+    def add_dead_end(self, description: str) -> None:
+        """Record something tried and confirmed FAILED. Prevents post-compact repeats."""
+        self.state["dead_ends"].append(description)
+        self.save()
+
+    # ── Hypotheses ───────────────────────────────────────────────────────
+
+    def add_hypothesis(self, hypothesis: str) -> None:
+        """Add a new attack hypothesis to investigate."""
+        self.state["hypotheses"].append(hypothesis)
+        self.save()
+
+    def remove_hypothesis(self, index: int) -> None:
+        """Remove a hypothesis by index (0-based). Silently ignores out-of-range."""
+        try:
+            self.state["hypotheses"].pop(index)
+            self.save()
+        except IndexError:
+            pass
+
+    # ── Current endpoint ─────────────────────────────────────────────────
+
+    def set_endpoint(self, endpoint: str) -> None:
+        """Set the endpoint currently being tested."""
+        self.state["current_endpoint"] = endpoint
+        self.save()
+
+    # ── Vuln class tracking ──────────────────────────────────────────────
+
+    def mark_class_tested(self, vuln_class: str) -> None:
+        """Mark one of the 24 vuln classes as tested."""
+        if vuln_class not in self.state["tested_classes"]:
+            self.state["tested_classes"].append(vuln_class)
+            self.save()
+
     # ── Resume helpers ───────────────────────────────────────────────────
 
     def get_resumption_prompt(self) -> str:
@@ -235,6 +309,40 @@ Phase: {s['phase']} | Step: {s['step']} | Findings: {findings_count} | Chains: {
         prompt += "DO NOT re-run completed tools. Pick up from the next unfinished step.\n"
 
         return prompt
+
+    def get_recovery_summary(self) -> str:
+        """Human-readable recovery summary for post-compact context injection."""
+        s = self.state
+        lines = [
+            f"Target: {s['domain']} | Phase: {s['phase']} | Endpoint: {s.get('current_endpoint', 'none')}",
+            f"Completed: {len(s['tools_completed'])} tools | Findings: {len(s['findings'])} | "
+            f"Tested: {len(s.get('tested_classes', []))}/24 classes",
+        ]
+
+        observations = s.get("observations", [])[-5:]
+        if observations:
+            lines.append("Last 5 observations:")
+            for o in observations:
+                lines.append(f"  [{o['ts']}] {o['cmd']} => {o['result'][:100]}")
+
+        hypotheses = s.get("hypotheses", [])
+        if hypotheses:
+            lines.append("Active hypotheses:")
+            for h in hypotheses:
+                lines.append(f"  - {h}")
+
+        dead_ends = s.get("dead_ends", [])
+        if dead_ends:
+            lines.append("Dead ends (do not retry):")
+            for d in dead_ends:
+                lines.append(f"  - {d}")
+
+        findings = s.get("findings", [])
+        if findings:
+            titles = [f.get("title", f.get("type", "untitled")) for f in findings]
+            lines.append(f"Findings so far: {titles}")
+
+        return "\n".join(lines)
 
     def get_status_summary(self) -> str:
         """One-line status for display."""

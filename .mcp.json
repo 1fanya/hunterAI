@@ -1,0 +1,26 @@
+{
+  "mcpServers": {
+    "hackerone": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/home/anon/hunterAI/mcp/hackerone-mcp/server.py",
+        "--env",
+        "H1_API_USERNAME=1fanya",
+        "--env",
+        "H1_API_TOKEN=hR96SSn7zpRvlcZwbd7nBgZOlHUMvxxQGIeK+lxbcy8="
+      ],
+      "env": {}
+    },
+    "burp": {
+      "type": "stdio",
+      "command": "python3",
+      "args": [
+        "/home/anon/hunterAI/mcp/burp-mcp-client/server.py"
+      ],
+      "env": {
+        "BURP_API_URL": "http://127.0.0.1:1337"
+      }
+    }
+  }
+}

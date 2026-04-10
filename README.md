@@ -427,6 +427,48 @@ Lets Claude search your accumulated knowledge (techniques, bypasses, patterns) w
 
 ---
 
+<<<<<<< Updated upstream
 **Think first. Hunt smart. 🎯**
+=======
+---
+
+## Recommended launch
+
+```bash
+export CLAUDE_CODE_SUBAGENT_MODEL="claude-sonnet-4-6"
+claude --model sonnet --dangerously-skip-permissions
+```
+
+Main session runs Sonnet. Recon subagents run Haiku automatically. This is the optimal cost/quality balance — Sonnet handles 95% of hunting tasks, Haiku handles tool orchestration.
+
+---
+
+## Auto-memory system
+
+HunterAI uses infrastructure-level memory that survives context resets:
+- **PostToolUse hook** — auto-logs every Bash tool result to hunt_state.py observations
+- **SessionStart hook** — reloads hunt state on every session start and after auto-compact
+- **hunt_state.py** — extended with observations[], dead_ends[], hypotheses[], current_endpoint
+- **hunt-vault/** — cross-hunt knowledge base for reusable patterns (optional MCP integration)
+
+You don't need to manually save observations. The system handles it.
+
+---
+
+## Subagent model routing
+
+| Agent | Model | Effort | Purpose |
+|-------|-------|--------|---------|
+| recon-agent | Haiku | Low | Subdomain/URL discovery |
+| recon-ranker | Haiku | Low | Endpoint classification |
+| hunt-agent | Sonnet | High | Active vuln testing |
+| validator | Sonnet | High | 7-Question Gate |
+| chain-builder | Sonnet | High | Exploit chains |
+| report-writer | Sonnet | High | HackerOne reports |
+
+---
+
+<div align="center">
+>>>>>>> Stashed changes
 
 *90+ tools · 24 vulnerability classes · Hypothesis-driven · Dual-mode hunting · Auto-memory · Model-routed subagents*

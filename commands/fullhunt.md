@@ -2,7 +2,20 @@
 description: "Full autonomous bug bounty hunt — scope import → recon → rank → hunt → exploit → validate → dedup → report. Takes a domain and outputs HackerOne-ready vulnerability reports. Usage: /fullhunt target.com [--platform hackerone] [--program handle] [--mode cheap]"
 ---
 
-# /fullhunt — End-to-End Autonomous Bug Bounty Hunt
+# /fullhunt <target> — Full Autonomous Hunt (autopilot mode)
+
+> **NOTE:** This mode finds low-hanging fruit (known CVEs, misconfigs, basic injection).
+> For high-value bugs ($5K+), use `/guided-hunt` instead — it uses YOUR app knowledge.
+>
+> **Autopilot is best for:**
+> - Initial sweep of a new program (find easy wins first)
+> - Large scope with many subdomains (breadth over depth)
+> - Programs where you haven't manually explored the app yet
+>
+> **Guided mode is best for:**
+> - Deep testing after you've used the app
+> - High-value programs where you want top-tier findings
+> - Targets with complex business logic (fintech, e-commerce, SaaS)
 
 One command. Domain in, vulnerability reports out. **ZERO questions asked — Claude makes ALL decisions.**
 
@@ -129,7 +142,19 @@ if not state.is_tool_completed("subdomain_takeover"):
     # ...dangling CNAME check
     pass
 
-# Phase 3.5: CVE Hunting (Haiku→Sonnet) — VERSION → CVE → EXPLOIT
+# Phase 3.5: Application Intelligence (Sonnet/high) — UNDERSTAND THE APP FIRST
+# Read skills/hacker-mindset/SKILL.md before this phase.
+# Do NOT skip this phase. Tool-first hunting misses business logic bugs.
+if not state.is_tool_completed("app_intelligence"):
+    state.start_tool("app_intelligence")
+    # 1. Walk the app as a user — browse every feature, capture API calls
+    # 2. Write app-intel.md: what does it do, what data is valuable, where are IDs
+    # 3. Write attack-plan.md: hypotheses prioritized by bounty value (IDOR first, CVEs last)
+    # 4. Set initial hypotheses in state before any security testing begins
+    # Example: state.add_hypothesis("IDOR on /api/v2/orders/{id} — no ownership check visible")
+    state.complete_tool("app_intelligence")
+
+# Phase 3.6: CVE Hunting (Haiku→Sonnet) — VERSION → CVE → EXPLOIT
 if not state.is_tool_completed("cve_scan"):
     state.start_tool("cve_scan")
     from cve_engine import CVEEngine
@@ -157,20 +182,39 @@ if not state.is_tool_completed("cve_scan"):
     cve.save_results(DOMAIN, result)
     state.complete_tool("cve_scan")
 
-# Phase 4: Active Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
-# CRITICAL: DO NOT STOP AFTER 1-2 FINDINGS. TEST EVERY VULN CLASS.
-# Run tools from priority table, skip completed ones
+# Phase 4: Hypothesis-driven Hunting (Sonnet/high) — THIS IS WHERE TOKENS GO
+# CRITICAL: Read attack-plan.md from Phase 3.5. Test hypotheses IN PRIORITY ORDER.
+# For each class: state a hypothesis FIRST, then run the tool, log dead ends.
+# DO NOT STOP AFTER 1-2 FINDINGS. TEST EVERY VULN CLASS.
 # After each potential finding: run auto-validation IMMEDIATELY
 # After each tool: state.complete_tool(name)
 
-# Track which vuln classes have been tested
+# Vuln classes in BOUNTY VALUE ORDER (high-ROI first, scanners last)
 VULN_CLASSES = [
-    "idor_bola", "auth_bypass", "business_logic", "race_condition",
-    "oauth_sso", "ssrf", "sqli", "xss", "ssti", "jwt",
-    "api_mass_assign", "graphql", "file_upload", "path_traversal",
-    "xxe", "cache_poison", "http_smuggling", "open_redirect",
-    "host_header", "twofa_bypass", "cve_exploit", "js_secrets",
-    "subdomain_takeover", "git_config_exposure",
+    "idor_bola",          # P1 — highest ROI, test every ID param with 2nd account
+    "auth_bypass",        # P1 — direct URL access, role escalation
+    "oauth_sso",          # P1 — state, redirect_uri, token leakage
+    "business_logic",     # P2 — price manipulation, flow skip, race conditions
+    "race_condition",     # P2 — parallel requests on critical actions
+    "ssrf",               # P2 — URL params, webhooks, file imports
+    "sqli",               # P3 — all user inputs, headers, cookies
+    "xss",                # P3 — stored/reflected, input fields
+    "jwt",                # P3 — none/HS256, key confusion, kid injection
+    "twofa_bypass",       # P3 — direct access, rate limit, response tamper
+    "ssti",               # P3 — template expressions in user input
+    "api_mass_assign",    # P3 — extra params in POST/PUT bodies
+    "graphql",            # P3 — introspection, batch queries, auth bypass
+    "file_upload",        # P3 — extension bypass, content-type, web shells
+    "path_traversal",     # P4 — file read params, download endpoints
+    "xxe",                # P4 — XML upload, SOAP endpoints
+    "host_header",        # P4 — password reset poisoning, routing
+    "cache_poison",       # P4 — unkeyed headers, host override
+    "http_smuggling",     # P4 — CL.TE, TE.CL on load balancers
+    "open_redirect",      # P4 — for chains only (OAuth, SSRF)
+    "cve_exploit",        # P5 — version fingerprint → cve_engine → exploit
+    "js_secrets",         # P5 — js_analyzer + js_deps_scanner
+    "subdomain_takeover", # P5 — dangling CNAMEs
+    "git_config_exposure",# P5 — .git, .env, debug endpoints
 ]
 
 for vuln_class in VULN_CLASSES:

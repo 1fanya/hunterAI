@@ -4,8 +4,40 @@
             "Bash(*)",
             "Read(*)",
             "Write(*)",
+            "Edit(*)",
             "Glob(*)",
             "Grep(*)"
+        ]
+    },
+    "env": {
+        "CLAUDE_CODE_SUBAGENT_MODEL": "claude-sonnet-4-6"
+    },
+    "hooks": {
+        "PostToolUse": [
+            {
+                "matcher": "Bash",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/post-tool-logger.sh"
+                    }
+                ]
+            }
+        ],
+        "SessionStart": [
+            {
+                "matcher": "",
+                "hooks": [
+                    {
+                        "type": "command",
+                        "command": ".claude/hooks/on-compact-recovery.sh"
+                    },
+                    {
+                        "type": "command",
+                        "command": "nuclei -update-templates -silent 2>/dev/null; echo '{\"additionalContext\": \"Nuclei templates updated.\"}'"
+                    }
+                ]
+            }
         ]
     }
 }

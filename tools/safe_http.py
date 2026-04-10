@@ -88,6 +88,7 @@ class RateLimiter:
 
     def wait(self, host: str = ""):
         """Block until a token is available."""
+        import logging
         # Refill tokens
         now = time.time()
         elapsed = now - self.last_refill
@@ -96,6 +97,10 @@ class RateLimiter:
 
         if self.tokens < 1:
             sleep_time = (1 - self.tokens) / self.rate
+            logging.warning(
+                f"[safe_http] Rate limit reached for {host or 'unknown'} — "
+                f"sleeping {sleep_time:.1f}s (limit: {int(self.rate * 60)} req/min)"
+            )
             time.sleep(sleep_time)
             self.tokens = 0
         else:
@@ -178,10 +183,14 @@ class SafeHTTP:
     """Scope-enforced, rate-limited HTTP client with circuit breaker."""
 
     def __init__(self, domain: str, scope_domains: list[str] = None,
-                 rps: float = 5.0, auth_headers: dict = None):
+                 rps: float = None, auth_headers: dict = None):
         self.domain = domain
         self.scope_domains = scope_domains or [f"*.{domain}", domain]
         self.auth_headers = auth_headers or {}
+        # HUNT_RATE_LIMIT env var: requests per minute (default 30/min = 0.5/sec)
+        if rps is None:
+            rpm = float(os.environ.get("HUNT_RATE_LIMIT", "30"))
+            rps = rpm / 60.0
         self.rate_limiter = RateLimiter(requests_per_second=rps)
         self.circuit_breaker = CircuitBreaker()
         self.dedup = DedupFilter()

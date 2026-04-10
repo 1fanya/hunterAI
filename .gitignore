@@ -27,9 +27,21 @@ venv/
 *.txt.bak
 
 # Hunt state and targets
-hunt-memory/sessions/
+hunt-memory/
+archived/
 targets/
+
+# Auth tokens — never commit
+hunt-memory/*/auth-pair.json
+
+# Claude Code local settings
+.claude/settings.local.json
 
 # Tool output
 *.out
 nmap-output/
+
+# Hunt vault — personal knowledge, don't publish
+hunt-vault/patterns/*.md
+hunt-vault/methodology/*.md
+!hunt-vault/README.md
